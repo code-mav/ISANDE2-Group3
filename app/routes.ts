@@ -1,8 +1,13 @@
 import { index } from "@react-router/dev/routes";
 
 export default [
-  index("./components/homepage.tsx"),       // Home page at "/"
+  index("./components/homepage.tsx"),
+  { path: "dashboard", file: "./components/dashboard.tsx" },
   { path: "inventory", file: "./components/inventorymodule.tsx" },
-  //{ path: "procurement", file: "./routes/procurement.tsx" },
-  //{ path: "reports", file: "./routes/reports.tsx" },
+  { path: "orders", file: "./components/ordersmodule.tsx" },
+  { path: "stockrequests", file: "./components/stockrequestsmodule.tsx" },
+  { path: "notifications", file: "./components/notificationsmodule.tsx" },
+  { path: "reports", file: "./components/reportsmodule.tsx" },
+
+  { path: "api/items", file: "./routes/api/items.tsx" },
 ];

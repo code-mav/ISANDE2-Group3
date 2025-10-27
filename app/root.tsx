@@ -5,6 +5,7 @@ import {
   Outlet,
   Scripts,
   ScrollRestoration,
+  NavLink,
 } from "react-router";
 import "./app.css";
 
@@ -26,13 +27,34 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <Meta />
         <Links />
       </head>
-      <body className="bg-[#F5F5DC] text-gray-800">
+      <body className="bg-[#F5F5DC] text-gray-800 font-inter">
+
         {/* Navigation Bar */}
-        <nav className="bg-[#0A400C] text-white p-4 flex gap-6">
-          <a href="/" className="hover:underline">Welcome</a>
-          <a href="/inventory" className="hover:underline">Inventory</a>
-          <a href="/procurement" className="hover:underline">Procurement</a>
-          <a href="/reports" className="hover:underline">Reports</a>
+        <nav className="bg-[#0A400C] text-white p-4 flex flex-wrap justify-center gap-6 shadow-md">
+          {[
+            { to: "/", label: "Home" },
+            { to: "/dashboard", label: "Dashboard" },
+            { to: "/inventory", label: "Inventory" },
+            { to: "/orders", label: "Orders" },
+            { to: "/stockrequests", label: "Stock Requests" },
+            { to: "/notifications", label: "Notifications" },
+            { to: "/reports", label: "Reports" },
+          ].map((link) => (
+            <NavLink
+              key={link.to}
+              to={link.to}
+              end
+              className={({ isActive }) =>
+                `transition hover:underline ${
+                  isActive
+                    ? "font-semibold underline decoration-2 underline-offset-4 text-[#D6D1B1]"
+                    : "text-white"
+                }`
+              }
+            >
+              {link.label}
+            </NavLink>
+          ))}
         </nav>
 
         {/* Page Content */}
@@ -44,6 +66,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
     </html>
   );
 }
+
 
 export default function App() {
   return <Outlet />;
