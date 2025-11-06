@@ -1,3 +1,5 @@
+// components/notificationsmodule.tsx
+
 export default function NotificationsModule() {
   const alerts = [
     { warehouse: "Warehouse A", supply: "Generator" },

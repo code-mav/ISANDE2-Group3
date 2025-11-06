@@ -1,3 +1,5 @@
+// components/inventorymodule.tsx
+
 import { useEffect, useState } from "react";
 
 interface Item {
@@ -9,6 +11,7 @@ interface Item {
   warehouseCode: string;
   stock: number;
   status: string;
+  createdAt?: string;
 }
 
 export default function InventoryModule() {
@@ -30,6 +33,9 @@ export default function InventoryModule() {
   const [searchTerm, setSearchTerm] = useState("");
   const [filterWarehouse, setFilterWarehouse] = useState("All");
   const [filterCategory, setFilterCategory] = useState("All");
+  const [sortBy, setSortBy] = useState("newest");
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
 
   // Load items from MongoDB
   const fetchItems = async () => {
@@ -42,11 +48,20 @@ export default function InventoryModule() {
     fetchItems();
   }, []);
 
-  // ✅ Handle input changes
+  // Handle input changes
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    const { name, value } = e.target;
+  const { name, value } = e.target;
+
+  if (name === "warehouseLoc") {
+    setNewItem({
+      ...newItem,
+      warehouseLoc: value,
+      warehouseCode: getWarehouseCodes(value)[0], // reset code automatically
+    });
+  } else {
     setNewItem({ ...newItem, [name]: value });
-  };
+  }
+};
 
   const openAddModal = () => {
     setIsEditMode(false);
@@ -71,23 +86,30 @@ export default function InventoryModule() {
 
   // Add or Update in MongoDB
   const addOrUpdateItem = async () => {
-    if (!newItem.sku || !newItem.name) {
-      alert("Please fill in all required fields.");
-      return;
-    }
+  if (!newItem.sku || !newItem.name) {
+    alert("Please fill in all required fields.");
+    return;
+  }
 
-    const method = isEditMode ? "PUT" : "POST";
-    const body = JSON.stringify({ ...newItem, _id: selectedItemId });
+  const method = isEditMode ? "PUT" : "POST";
+  const body = JSON.stringify({ ...newItem, _id: selectedItemId });
 
-    await fetch("/api/items", {
-      method,
-      headers: { "Content-Type": "application/json" },
-      body,
-    });
+  const res = await fetch("/api/items", {
+    method,
+    headers: { "Content-Type": "application/json" },
+    body,
+  });
 
-    setIsModalOpen(false);
-    await fetchItems();
-  };
+  const data = await res.json();
+
+  if (!res.ok) {
+    alert(data.message || "Failed to save item. Please try again.");
+    return;
+  }
+
+  setIsModalOpen(false);
+  await fetchItems();
+};
 
   // Delete item
   const deleteItem = async (id: string | undefined) => {
@@ -99,7 +121,8 @@ export default function InventoryModule() {
     }
   };
 
-  const filteredItems = items.filter((item) => {
+const filteredItems = items
+  .filter((item) => {
     const matchesSearch =
       item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       item.sku.toLowerCase().includes(searchTerm.toLowerCase());
@@ -108,22 +131,69 @@ export default function InventoryModule() {
     const matchesCategory =
       filterCategory === "All" || item.category === filterCategory;
     return matchesSearch && matchesWarehouse && matchesCategory;
+  })
+  .sort((a, b) => {
+    if (sortBy === "name") return a.name.localeCompare(b.name);
+    if (sortBy === "stock") return b.stock - a.stock;
+    if (sortBy === "newest") {
+      const dateA = new Date(a.createdAt || 0).getTime();
+      const dateB = new Date(b.createdAt || 0).getTime();
+      return dateB - dateA;
+    }
+    return 0;
   });
+
+const totalPages = Math.ceil(filteredItems.length / itemsPerPage);
+const paginatedItems = filteredItems.slice(
+  (currentPage - 1) * itemsPerPage,
+  currentPage * itemsPerPage
+);
+
+
+  // Get color + badge for status
+  const getStatusBadge = (stock: number) => {
+    let label = "Available";
+    let color = "bg-green-100 text-green-700";
+
+    if (stock <= 0) {
+      label = "Out of Stock";
+      color = "bg-red-100 text-red-700";
+    } else if (stock <= 5) {
+      label = "Low Stock";
+      color = "bg-orange-100 text-orange-700";
+    }
+
+    return (
+      <span
+        className={`px-3 py-1 rounded-full text-sm font-semibold ${color}`}
+      >
+        {label}
+      </span>
+    );
+  };
+
+// Get available warehouse codes depending on location
+const getWarehouseCodes = (location: string) => {
+  if (location === "Malabon") return ["WH1"];
+  if (location === "Valenzuela") return ["WH1", "WH2", "WH3", "WH4"];
+  return [];
+};
 
   return (
     <div className="p-6 min-h-screen bg-[#FAF8F0]">
-      <h1 className="text-2xl font-bold text-[#0A400C]">Inventory</h1>
-      <p className="mt-2 text-[#819067]">
-        Manage and view stock items across warehouses.
-      </p>
+      <div className="text-center mb-6">
+  <h1 className="text-3xl font-bold text-[#0A400C]">Inventory Management</h1>
+  <p className="mt-2 text-[#819067] text-lg">
+    Manage and view stock items across warehouses.
+  </p>
+  <button
+    onClick={openAddModal}
+    className="mt-4 px-6 py-2 bg-[#0A400C] text-white rounded-lg hover:bg-green-900 transition"
+  >
+    + Add New Item
+  </button>
+</div>
 
-      {/* Add Item Button */}
-      <button
-        onClick={openAddModal}
-        className="mt-4 px-5 py-2 bg-[#0A400C] text-white rounded-lg hover:bg-green-900 transition"
-      >
-        + Add New Item
-      </button>
 
       {/* Search & Filters */}
       <div className="mt-6 bg-white rounded-2xl shadow p-4 flex flex-wrap items-center gap-4 border border-[#E0DCC7]">
@@ -155,11 +225,23 @@ export default function InventoryModule() {
           <option value="Tools">Tools</option>
           <option value="Miscellaneous">Miscellaneous</option>
         </select>
+
+        <select
+          value={sortBy}
+          onChange={(e) => setSortBy(e.target.value)}
+          className="p-2 border rounded-lg"
+        >
+          <option value="newest">Sort by: Newest</option>
+          <option value="name">Sort by: Name</option>
+          <option value="stock">Sort by: Stock</option>
+        </select>
+
         <button
           onClick={() => {
             setSearchTerm("");
             setFilterWarehouse("All");
             setFilterCategory("All");
+            setSortBy("newest");
           }}
           className="px-4 py-2 bg-[#E0DCC7] text-[#0A400C] rounded-lg hover:bg-[#D6D1B1]"
         >
@@ -184,10 +266,10 @@ export default function InventoryModule() {
             </tr>
           </thead>
           <tbody>
-            {filteredItems.length > 0 ? (
-              filteredItems.map((item, index) => (
+            {paginatedItems.length > 0 ? (
+              paginatedItems.map((item, index) => (
                 <tr key={item._id || index} className="border-b hover:bg-gray-50">
-                  <td className="p-2">{index + 1}</td>
+                  <td className="p-2">{(currentPage - 1) * itemsPerPage + index + 1}</td>
                   <td className="p-2 font-semibold">{item.sku}</td>
                   <td className="p-2">{item.name}</td>
                   <td className="p-2">{item.category}</td>
@@ -200,15 +282,7 @@ export default function InventoryModule() {
                   >
                     {item.stock}
                   </td>
-                  <td
-                      className={`p-2 font-semibold ${
-                                 item.stock <= 5 ? "text-red-600" : "text-green-700"
-                                }`}
->
-                                {item.status}
-                              </td>
-
-
+                  <td className="p-2">{getStatusBadge(item.stock)}</td>
                   <td className="p-2 text-center space-x-2">
                     <button
                       onClick={() => openEditModal(item)}
@@ -235,6 +309,28 @@ export default function InventoryModule() {
           </tbody>
         </table>
       </div>
+
+<div className="flex justify-center items-center gap-3 mt-4">
+  <button
+    onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
+    disabled={currentPage === 1}
+    className="px-3 py-1 bg-[#E0DCC7] text-[#0A400C] rounded-lg disabled:opacity-50"
+  >
+    ⬅ Prev
+  </button>
+
+  <span className="text-[#0A400C] font-medium">
+    Page {currentPage} of {totalPages}
+  </span>
+
+  <button
+    onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
+    disabled={currentPage === totalPages}
+    className="px-3 py-1 bg-[#E0DCC7] text-[#0A400C] rounded-lg disabled:opacity-50"
+  >
+    Next ➡
+  </button>
+</div>
 
       {/* Modal */}
       {isModalOpen && (
@@ -311,19 +407,19 @@ export default function InventoryModule() {
                   Warehouse Code
                 </label>
                 <select
-                  name="warehouseCode"
-                  value={newItem.warehouseCode}
-                  onChange={handleChange}
-                  className="w-full p-2 border rounded-lg mt-1"
+                name="warehouseCode"
+                value={newItem.warehouseCode}
+                onChange={handleChange}
+                className="w-full p-2 border rounded-lg mt-1"
                 >
-                  <option>WH1</option>
-                  <option>WH2</option>
-                  <option>WH3</option>
-                  <option>WH4</option>
+                {getWarehouseCodes(newItem.warehouseLoc).map((code) => (
+                 <option key={code}>{code}</option>
+                ))}
                 </select>
+
               </div>
 
-              <div>
+              <div className="col-span-2">
                 <label className="block text-sm font-medium text-[#0A400C]">
                   Current Stock
                 </label>
@@ -335,22 +431,6 @@ export default function InventoryModule() {
                   className="w-full p-2 border rounded-lg mt-1"
                   min="0"
                 />
-              </div>
-
-              <div className="col-span-2">
-                <label className="block text-sm font-medium text-[#0A400C]">
-                  Status
-                </label>
-                <select
-                  name="status"
-                  value={newItem.status}
-                  onChange={handleChange}
-                  className="w-full p-2 border rounded-lg mt-1"
-                >
-                  <option>Available</option>
-                  <option>Low Stock</option>
-                  <option>Out of Stock</option>
-                </select>
               </div>
             </div>
 

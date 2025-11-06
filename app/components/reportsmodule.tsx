@@ -1,3 +1,5 @@
+// components/reportsmodule.tsx
+
 export default function ReportsModule() {
   const reports = [
     { name: "Granulator", type: "Inventory Valuation", date: "July 25, 2023" },

@@ -1,3 +1,5 @@
+// components/ordersmodule.tsx
+
 export default function OrdersModule() {
   const orders = [
     { id: "2025072100001", date: "2025-07-21", buyer: "ABC Company", summary: "1x Generator", status: "Processing" },

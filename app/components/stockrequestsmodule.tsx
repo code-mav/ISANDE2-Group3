@@ -1,3 +1,5 @@
+// components/stockrequestsmodule.tsx
+
 export default function StockRequestsModule() {
   const requests = [
     { id: "SR20250721001", date: "2025-07-21", requester: "Warehouse A", item: "Generator", qty: 1, status: "Pending" },
