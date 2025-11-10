@@ -11,6 +11,7 @@ interface Item {
   warehouseCode: string;
   stock: number;
   status: string;
+  note?: string;       
   createdAt?: string;
 }
 
@@ -28,6 +29,7 @@ export default function InventoryModule() {
     warehouseCode: "WH1",
     stock: 0,
     status: "Available",
+    note: "",            
   });
 
   const [searchTerm, setSearchTerm] = useState("");
@@ -49,22 +51,27 @@ export default function InventoryModule() {
   }, []);
 
   // Handle input changes
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-  const { name, value } = e.target;
+  const handleChange = (
+    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>
+  ) => {
+    const { name, value } = e.target;
 
-  if (name === "warehouseLoc") {
-    setNewItem({
-      ...newItem,
-      warehouseLoc: value,
-      warehouseCode: getWarehouseCodes(value)[0], // reset code automatically
-    });
-  } else {
-    setNewItem({ ...newItem, [name]: value });
-  }
-};
+    if (name === "warehouseLoc") {
+      setNewItem({
+        ...newItem,
+        warehouseLoc: value,
+        warehouseCode: getWarehouseCodes(value)[0], // reset code automatically
+      });
+    } else if (name === "stock") {
+      setNewItem({ ...newItem, stock: Number(value) });
+    } else {
+      setNewItem({ ...newItem, [name]: value } as Item);
+    }
+  };
 
   const openAddModal = () => {
     setIsEditMode(false);
+    setSelectedItemId(null);
     setNewItem({
       sku: "",
       name: "",
@@ -73,6 +80,7 @@ export default function InventoryModule() {
       warehouseCode: "WH1",
       stock: 0,
       status: "Available",
+      note: "",           
     });
     setIsModalOpen(true);
   };
@@ -80,36 +88,36 @@ export default function InventoryModule() {
   const openEditModal = (item: Item) => {
     setIsEditMode(true);
     setSelectedItemId(item._id || null);
-    setNewItem({ ...item });
+    setNewItem({ ...item, note: item.note ?? "" });
     setIsModalOpen(true);
   };
 
   // Add or Update in MongoDB
   const addOrUpdateItem = async () => {
-  if (!newItem.sku || !newItem.name) {
-    alert("Please fill in all required fields.");
-    return;
-  }
+    if (!newItem.sku || !newItem.name) {
+      alert("Please fill in all required fields.");
+      return;
+    }
 
-  const method = isEditMode ? "PUT" : "POST";
-  const body = JSON.stringify({ ...newItem, _id: selectedItemId });
+    const method = isEditMode ? "PUT" : "POST";
+    const body = JSON.stringify({ ...newItem, _id: selectedItemId });
 
-  const res = await fetch("/api/items", {
-    method,
-    headers: { "Content-Type": "application/json" },
-    body,
-  });
+    const res = await fetch("/api/items", {
+      method,
+      headers: { "Content-Type": "application/json" },
+      body,
+    });
 
-  const data = await res.json();
+    const data = await res.json();
 
-  if (!res.ok) {
-    alert(data.message || "Failed to save item. Please try again.");
-    return;
-  }
+    if (!res.ok) {
+      alert(data.message || "Failed to save item. Please try again.");
+      return;
+    }
 
-  setIsModalOpen(false);
-  await fetchItems();
-};
+    setIsModalOpen(false);
+    await fetchItems();
+  };
 
   // Delete item
   const deleteItem = async (id: string | undefined) => {
@@ -121,34 +129,33 @@ export default function InventoryModule() {
     }
   };
 
-const filteredItems = items
-  .filter((item) => {
-    const matchesSearch =
-      item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.sku.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesWarehouse =
-      filterWarehouse === "All" || item.warehouseLoc === filterWarehouse;
-    const matchesCategory =
-      filterCategory === "All" || item.category === filterCategory;
-    return matchesSearch && matchesWarehouse && matchesCategory;
-  })
-  .sort((a, b) => {
-    if (sortBy === "name") return a.name.localeCompare(b.name);
-    if (sortBy === "stock") return b.stock - a.stock;
-    if (sortBy === "newest") {
-      const dateA = new Date(a.createdAt || 0).getTime();
-      const dateB = new Date(b.createdAt || 0).getTime();
-      return dateB - dateA;
-    }
-    return 0;
-  });
+  const filteredItems = items
+    .filter((item) => {
+      const matchesSearch =
+        item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        item.sku.toLowerCase().includes(searchTerm.toLowerCase());
+      const matchesWarehouse =
+        filterWarehouse === "All" || item.warehouseLoc === filterWarehouse;
+      const matchesCategory =
+        filterCategory === "All" || item.category === filterCategory;
+      return matchesSearch && matchesWarehouse && matchesCategory;
+    })
+    .sort((a, b) => {
+      if (sortBy === "name") return a.name.localeCompare(b.name);
+      if (sortBy === "stock") return b.stock - a.stock;
+      if (sortBy === "newest") {
+        const dateA = new Date(a.createdAt || 0).getTime();
+        const dateB = new Date(b.createdAt || 0).getTime();
+        return dateB - dateA;
+      }
+      return 0;
+    });
 
-const totalPages = Math.ceil(filteredItems.length / itemsPerPage);
-const paginatedItems = filteredItems.slice(
-  (currentPage - 1) * itemsPerPage,
-  currentPage * itemsPerPage
-);
-
+  const totalPages = Math.max(1, Math.ceil(filteredItems.length / itemsPerPage));
+  const paginatedItems = filteredItems.slice(
+    (currentPage - 1) * itemsPerPage,
+    currentPage * itemsPerPage
+  );
 
   // Get color + badge for status
   const getStatusBadge = (stock: number) => {
@@ -164,36 +171,33 @@ const paginatedItems = filteredItems.slice(
     }
 
     return (
-      <span
-        className={`px-3 py-1 rounded-full text-sm font-semibold ${color}`}
-      >
+      <span className={`px-3 py-1 rounded-full text-sm font-semibold ${color}`}>
         {label}
       </span>
     );
   };
 
-// Get available warehouse codes depending on location
-const getWarehouseCodes = (location: string) => {
-  if (location === "Malabon") return ["WH1"];
-  if (location === "Valenzuela") return ["WH1", "WH2", "WH3", "WH4"];
-  return [];
-};
+  // Get available warehouse codes depending on location
+  const getWarehouseCodes = (location: string) => {
+    if (location === "Malabon") return ["WH1"];
+    if (location === "Valenzuela") return ["WH1", "WH2", "WH3", "WH4"];
+    return [];
+  };
 
   return (
     <div className="p-6 min-h-screen bg-[#FAF8F0]">
       <div className="text-center mb-6">
-  <h1 className="text-3xl font-bold text-[#0A400C]">Inventory Management</h1>
-  <p className="mt-2 text-[#819067] text-lg">
-    Manage and view stock items across warehouses.
-  </p>
-  <button
-    onClick={openAddModal}
-    className="mt-4 px-6 py-2 bg-[#0A400C] text-white rounded-lg hover:bg-green-900 transition"
-  >
-    + Add New Item
-  </button>
-</div>
-
+        <h1 className="text-3xl font-bold text-[#0A400C]">Inventory Management</h1>
+        <p className="mt-2 text-[#819067] text-lg">
+          Manage and view stock items across warehouses.
+        </p>
+        <button
+          onClick={openAddModal}
+          className="mt-4 px-6 py-2 bg-[#0A400C] text-white rounded-lg hover:bg-green-900 transition"
+        >
+          + Add New Item
+        </button>
+      </div>
 
       {/* Search & Filters */}
       <div className="mt-6 bg-white rounded-2xl shadow p-4 flex flex-wrap items-center gap-4 border border-[#E0DCC7]">
@@ -262,6 +266,7 @@ const getWarehouseCodes = (location: string) => {
               <th className="p-2">Code</th>
               <th className="p-2">Stock</th>
               <th className="p-2">Status</th>
+              <th className="p-2">Note</th> {/* NEW */}
               <th className="p-2 text-center">Actions</th>
             </tr>
           </thead>
@@ -269,7 +274,9 @@ const getWarehouseCodes = (location: string) => {
             {paginatedItems.length > 0 ? (
               paginatedItems.map((item, index) => (
                 <tr key={item._id || index} className="border-b hover:bg-gray-50">
-                  <td className="p-2">{(currentPage - 1) * itemsPerPage + index + 1}</td>
+                  <td className="p-2">
+                    {(currentPage - 1) * itemsPerPage + index + 1}
+                  </td>
                   <td className="p-2 font-semibold">{item.sku}</td>
                   <td className="p-2">{item.name}</td>
                   <td className="p-2">{item.category}</td>
@@ -283,6 +290,9 @@ const getWarehouseCodes = (location: string) => {
                     {item.stock}
                   </td>
                   <td className="p-2">{getStatusBadge(item.stock)}</td>
+                  <td className="p-2 max-w-[240px] truncate" title={item.note || ""}>
+                    {item.note || "—"}
+                  </td>
                   <td className="p-2 text-center space-x-2">
                     <button
                       onClick={() => openEditModal(item)}
@@ -301,7 +311,7 @@ const getWarehouseCodes = (location: string) => {
               ))
             ) : (
               <tr>
-                <td colSpan={9} className="p-4 text-center text-[#819067] italic">
+                <td colSpan={10} className="p-4 text-center text-[#819067] italic">
                   No items found matching your search or filter criteria.
                 </td>
               </tr>
@@ -310,27 +320,27 @@ const getWarehouseCodes = (location: string) => {
         </table>
       </div>
 
-<div className="flex justify-center items-center gap-3 mt-4">
-  <button
-    onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
-    disabled={currentPage === 1}
-    className="px-3 py-1 bg-[#E0DCC7] text-[#0A400C] rounded-lg disabled:opacity-50"
-  >
-    ⬅ Prev
-  </button>
+      <div className="flex justify-center items-center gap-3 mt-4">
+        <button
+          onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
+          disabled={currentPage === 1}
+          className="px-3 py-1 bg-[#E0DCC7] text-[#0A400C] rounded-lg disabled:opacity-50"
+        >
+          ⬅ Prev
+        </button>
 
-  <span className="text-[#0A400C] font-medium">
-    Page {currentPage} of {totalPages}
-  </span>
+        <span className="text-[#0A400C] font-medium">
+          Page {currentPage} of {totalPages}
+        </span>
 
-  <button
-    onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
-    disabled={currentPage === totalPages}
-    className="px-3 py-1 bg-[#E0DCC7] text-[#0A400C] rounded-lg disabled:opacity-50"
-  >
-    Next ➡
-  </button>
-</div>
+        <button
+          onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
+          disabled={currentPage === totalPages}
+          className="px-3 py-1 bg-[#E0DCC7] text-[#0A400C] rounded-lg disabled:opacity-50"
+        >
+          Next ➡
+        </button>
+      </div>
 
       {/* Modal */}
       {isModalOpen && (
@@ -407,16 +417,15 @@ const getWarehouseCodes = (location: string) => {
                   Warehouse Code
                 </label>
                 <select
-                name="warehouseCode"
-                value={newItem.warehouseCode}
-                onChange={handleChange}
-                className="w-full p-2 border rounded-lg mt-1"
+                  name="warehouseCode"
+                  value={newItem.warehouseCode}
+                  onChange={handleChange}
+                  className="w-full p-2 border rounded-lg mt-1"
                 >
-                {getWarehouseCodes(newItem.warehouseLoc).map((code) => (
-                 <option key={code}>{code}</option>
-                ))}
+                  {getWarehouseCodes(newItem.warehouseLoc).map((code) => (
+                    <option key={code}>{code}</option>
+                  ))}
                 </select>
-
               </div>
 
               <div className="col-span-2">
@@ -430,6 +439,21 @@ const getWarehouseCodes = (location: string) => {
                   onChange={handleChange}
                   className="w-full p-2 border rounded-lg mt-1"
                   min="0"
+                />
+              </div>
+
+              {/* NEW: Note field */}
+              <div className="col-span-2">
+                <label className="block text-sm font-medium text-[#0A400C]">
+                  Adjustment Note (e.g., shrinkage, damage, count correction)
+                </label>
+                <textarea
+                  name="note"
+                  value={newItem.note || ""}
+                  onChange={handleChange}
+                  className="w-full p-2 border rounded-lg mt-1"
+                  rows={3}
+                  placeholder="e.g, Shrinkage -2 during cycle count 2025-11-10"
                 />
               </div>
             </div>
