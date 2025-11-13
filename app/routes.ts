@@ -9,5 +9,6 @@ export default [
   { path: "notifications", file: "./components/notificationsmodule.tsx" },
   { path: "reports", file: "./components/reportsmodule.tsx" },
 
+  { path: "api/orders", file: "./routes/api/orders.tsx" },
   { path: "api/items", file: "./routes/api/items.tsx" },
 ];
