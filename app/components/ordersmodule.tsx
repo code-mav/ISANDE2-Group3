@@ -85,32 +85,48 @@ export default function OrdersModule() {
   };
 
   // Add item to order
-  const addItemToOrder = (item: InventoryItem) => {
-    if (newOrder.items.find((i) => i.sku === item.sku)) return;
-    const updatedItems = [
-      ...newOrder.items,
-      {
-        sku: item.sku,
-        name: item.name,
-        unitPrice: item.unitPrice ?? 0,
-        quantity: 1,
-        subtotal: item.unitPrice ?? 0,
-      },
-    ];
-    const total = updatedItems.reduce((sum, i) => sum + i.subtotal, 0);
-    setNewOrder({ ...newOrder, items: updatedItems, totalAmount: total });
-  };
+const addItemToOrder = (item: InventoryItem) => {
+  if (newOrder.items.find((i) => i.sku === item.sku)) return;
 
-  // Update item quantity
-  const updateItemQuantity = (sku: string, quantity: number) => {
-    const updatedItems = newOrder.items.map((item) =>
-      item.sku === sku
-        ? { ...item, quantity, subtotal: item.unitPrice * quantity }
-        : item
-    );
-    const total = updatedItems.reduce((sum, i) => sum + i.subtotal, 0);
-    setNewOrder({ ...newOrder, items: updatedItems, totalAmount: total });
-  };
+  // Check if stock is zero
+  if ((item.stock || 0) <= 0) {
+    alert(`Cannot add ${item.name}: Out of stock`);
+    return;
+  }
+
+  const updatedItems = [
+    ...newOrder.items,
+    {
+      sku: item.sku,
+      name: item.name,
+      unitPrice: item.unitPrice ?? 0,
+      quantity: 1,
+      subtotal: item.unitPrice ?? 0,
+    },
+  ];
+  const total = updatedItems.reduce((sum, i) => sum + i.subtotal, 0);
+  setNewOrder({ ...newOrder, items: updatedItems, totalAmount: total });
+};
+
+// Update item quantity
+const updateItemQuantity = (sku: string, quantity: number) => {
+  const inventoryItem = inventory.find((i) => i.sku === sku);
+  const available = inventoryItem?.stock ?? 0;
+
+  if (quantity > available) {
+    alert(`Cannot set quantity beyond available stock (${available})`);
+    return;
+  }
+
+  const updatedItems = newOrder.items.map((item) =>
+    item.sku === sku
+      ? { ...item, quantity, subtotal: item.unitPrice * quantity }
+      : item
+  );
+  const total = updatedItems.reduce((sum, i) => sum + i.subtotal, 0);
+  setNewOrder({ ...newOrder, items: updatedItems, totalAmount: total });
+};
+
 
   // Remove item from order
   const removeItem = (sku: string) => {
@@ -145,6 +161,22 @@ export default function OrdersModule() {
     }
   };
 
+  // Delete order
+  const deleteOrder = async (id: string) => {
+  if (!confirm("Are you sure you want to delete this order?")) return;
+
+  const res = await fetch(`/api/orders?id=${id}`, {
+    method: "DELETE",
+  });
+
+  if (res.ok) {
+    alert("Order deleted!");
+    fetchOrders();
+  } else {
+    alert("Failed to delete.");
+  }
+};
+
   // Sort orders
   const sortedOrders = [...orders].sort((a, b) => {
     if (sortBy === "name") return a.customerName.localeCompare(b.customerName);
@@ -157,6 +189,20 @@ export default function OrdersModule() {
   const filteredOrders = sortedOrders
     .filter((o) => (filterStatus === "All" ? true : o.status === filterStatus))
     .filter((o) => o.customerName.toLowerCase().includes(searchQuery.toLowerCase()));
+
+    // Status color mapping
+const getStatusColor = (status: string) => {
+  switch (status) {
+    case "Cancelled":
+      return "text-red-600 font-semibold";
+    case "Completed":
+      return "text-green-600 font-semibold";
+    case "Processing":
+      return "text-yellow-600 font-semibold";
+    default:
+      return "text-gray-700";
+  }
+};
 
   return (
     <div className="p-6 min-h-screen bg-[#FAF8F0]">
@@ -251,15 +297,23 @@ export default function OrdersModule() {
                   <td className="p-2">{o.orderDate}</td>
                   <td className="p-2">{o.items.length} item(s)</td>
                   <td className="p-2 font-semibold">₱{o.totalAmount.toFixed(2)}</td>
-                  <td className="p-2">{o.status}</td>
-                  <td className="p-2 text-center">
-                    <button
-                      onClick={() => openEditModal(o)}
-                      className="px-2 py-1 bg-[#E0DCC7] text-[#0A400C] rounded-md text-sm hover:bg-[#D6D1B1]"
-                    >
-                      ✏️
-                    </button>
-                  </td>
+                  <td className={`p-2 ${getStatusColor(o.status)}`}>{o.status}</td>
+                  <td className="p-2 flex gap-2 justify-center">
+  <button
+    onClick={() => openEditModal(o)}
+    className="px-2 py-1 bg-[#E0DCC7] text-[#0A400C] rounded-md text-sm hover:bg-[#D6D1B1]"
+  >
+    ✏️
+  </button>
+
+  <button
+    onClick={() => deleteOrder(o._id!)}
+    className="px-2 py-1 bg-red-600 text-white rounded-md text-sm hover:bg-red-700"
+  >
+    🗑️
+  </button>
+</td>
+
                 </tr>
               ))
             ) : (
