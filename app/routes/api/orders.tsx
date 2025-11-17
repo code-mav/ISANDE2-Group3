@@ -80,13 +80,13 @@ export async function action({ request }: { request: Request }) {
 
     // Insert order as Pending
     const order = {
-      customerName: body.customerName,
-      orderDate: body.orderDate,
-      items,
-      totalAmount: Number(body.totalAmount || 0),
-      status: "Pending",
-      createdAt: new Date(),
-    };
+  customerName: body.customerName,
+  orderDate: body.orderDate,
+  items,
+  totalAmount: Number(body.totalAmount || 0),
+  status: body.status ?? "Pending", // <-- allow Completed
+  createdAt: new Date(),
+};
 
     const insertResult = await db.collection("Orders").insertOne(order);
 
@@ -153,8 +153,13 @@ if (method === "PUT") {
   const allSkus = new Set<string>([...Object.keys(oldMap), ...Object.keys(newMap)]);
   for (const sku of allSkus) {
     // Treat Pending and Processing as reserved
-    const oldReserved = (oldStatus === "Pending" || oldStatus === "Processing") ? (oldMap[sku] || 0) : 0;
-    const newReserved = (newStatus === "Pending" || newStatus === "Processing") ? (newMap[sku] || 0) : 0;
+  // Treat Pending, Processing, and Completed as reserved
+const oldReserved = (oldStatus === "Pending" || oldStatus === "Processing" || oldStatus === "Completed") 
+    ? (oldMap[sku] || 0) : 0;
+
+const newReserved = (newStatus === "Pending" || newStatus === "Processing" || newStatus === "Completed") 
+    ? (newMap[sku] || 0) : 0;
+
     const delta = oldReserved - newReserved; // positive -> add back, negative -> subtract
     if (delta !== 0) deltaMap[sku] = delta;
   }
