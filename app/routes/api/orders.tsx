@@ -8,6 +8,8 @@ type OrderItem = {
   unitPrice?: number;
 };
 
+type LogAction = "create" | "update" | "delete" | "order" | "stockrequest";
+
 function toNum(v: any) {
   return Number(v ?? 0);
 }
@@ -15,7 +17,11 @@ function toNum(v: any) {
 export async function loader() {
   const client = await clientPromise;
   const db = client.db("ISANDE2");
-  const orders = await db.collection("Orders").find({}).sort({ orderDate: -1 }).toArray();
+  const orders = await db
+    .collection("Orders")
+    .find({})
+    .sort({ orderDate: -1 })
+    .toArray();
 
   return new Response(JSON.stringify(orders), {
     headers: { "Content-Type": "application/json" },
@@ -29,7 +35,11 @@ export async function action({ request }: { request: Request }) {
 
   // --- Helper: check if inventory has enough for required qty ---
   async function checkAvailability(reqMap: Record<string, number>) {
-    const insufficient: Array<{ sku: string; have: number; need: number }> = [];
+    const insufficient: Array<{
+      sku: string;
+      have: number;
+      need: number;
+    }> = [];
 
     for (const sku of Object.keys(reqMap)) {
       const need = reqMap[sku];
@@ -41,21 +51,51 @@ export async function action({ request }: { request: Request }) {
     return { ok: insufficient.length === 0, insufficient };
   }
 
-  // --- Helper: adjust inventory ---
-  async function applyInventoryDeltas(deltaMap: Record<string, number>) {
+  // --- Helper: adjust inventory + log as "order" action ---
+  async function applyInventoryDeltas(
+    deltaMap: Record<string, number>,
+    note: string,
+    orderId: string
+  ) {
+    const invCol = db.collection("Inventory");
+    const logs = db.collection("AuditLogs");
+
     for (const sku of Object.keys(deltaMap)) {
       const delta = deltaMap[sku];
-      await db.collection("Inventory").updateOne(
-        { sku },
-        { $inc: { stock: delta } }
-      );
-      console.log(`Inventory ${sku} updated by ${delta}`);
+      const inv = await invCol.findOne({ sku });
+
+      const beforeStock =
+        inv && typeof inv.stock === "number"
+          ? Number(inv.stock)
+          : inv && Array.isArray(inv.stock)
+          ? inv.stock.reduce(
+              (a: number, b: any) => a + Number(b ?? 0),
+              0
+            )
+          : null;
+
+      const afterStock =
+        beforeStock !== null ? beforeStock + delta : null;
+
+      await invCol.updateOne({ sku }, { $inc: { stock: delta } });
+
+      await logs.insertOne({
+        ts: new Date(),
+        action: "order" as LogAction,
+        sku,
+        name: inv?.name ?? null,
+        stockBefore: beforeStock,
+        stockAfter: afterStock,
+        delta,
+        note,
+        orderId,
+        stockRequestId: null,
+      });
     }
   }
 
   /* =====================================================================
      POST (CREATE ORDER)
-     - Deduct inventory immediately for new order
      ===================================================================== */
   if (method === "POST") {
     const body = await request.json();
@@ -71,179 +111,210 @@ export async function action({ request }: { request: Request }) {
     // Check availability
     const avail = await checkAvailability(needMap);
     if (!avail.ok) {
-      return new Response(JSON.stringify({
-        success: false,
-        message: "Insufficient stock",
-        details: avail.insufficient
-      }), { status: 400, headers: { "Content-Type": "application/json" } });
+      return new Response(
+        JSON.stringify({
+          success: false,
+          message: "Insufficient stock",
+          details: avail.insufficient,
+        }),
+        { status: 400, headers: { "Content-Type": "application/json" } }
+      );
     }
 
-    // Insert order as Pending
+    // Insert order
     const order = {
-  customerName: body.customerName,
-  orderDate: body.orderDate,
-  items,
-  totalAmount: Number(body.totalAmount || 0),
-  status: body.status ?? "Pending", // <-- allow Completed
-  createdAt: new Date(),
-};
+      customerName: body.customerName,
+      orderDate: body.orderDate,
+      items,
+      totalAmount: Number(body.totalAmount || 0),
+      status: body.status ?? "Pending",
+      createdAt: new Date(),
+    };
 
     const insertResult = await db.collection("Orders").insertOne(order);
 
-    // Deduct inventory immediately
+    // Deduct inventory + log
     const deltaMap: Record<string, number> = {};
     for (const sku of Object.keys(needMap)) deltaMap[sku] = -needMap[sku];
-    await applyInventoryDeltas(deltaMap);
 
-    return new Response(JSON.stringify({ success: true, id: insertResult.insertedId }), {
+    await applyInventoryDeltas(
+      deltaMap,
+      `Order created (${insertResult.insertedId}) – status ${order.status} – (for ${order.customerName})`,
+      insertResult.insertedId.toString()
+    );
+
+    return new Response(
+      JSON.stringify({ success: true, id: insertResult.insertedId }),
+      { headers: { "Content-Type": "application/json" } }
+    );
+  }
+
+  /* =====================================================================
+     PUT (UPDATE ORDER)
+     ===================================================================== */
+  if (method === "PUT") {
+    const url = new URL(request.url);
+    const id = url.searchParams.get("id");
+    if (!id) {
+      return new Response(
+        JSON.stringify({ success: false, message: "Missing order ID" }),
+        { status: 400, headers: { "Content-Type": "application/json" } }
+      );
+    }
+
+    const body = await request.json();
+    const newStatus: string = body.status ?? "Pending";
+    const newItems: OrderItem[] = Array.isArray(body.items) ? body.items : [];
+
+    const orderId = new ObjectId(String(id));
+    const oldOrder = await db.collection("Orders").findOne({ _id: orderId });
+
+    if (!oldOrder) {
+      return new Response(
+        JSON.stringify({ success: false, message: "Order not found" }),
+        { status: 404, headers: { "Content-Type": "application/json" } }
+      );
+    }
+
+    const oldStatus = oldOrder.status ?? "Pending";
+    const oldItems: OrderItem[] = Array.isArray(oldOrder.items)
+      ? oldOrder.items
+      : [];
+
+    const buildMap = (arr: OrderItem[]) => {
+      const m: Record<string, number> = {};
+      for (const it of arr) {
+        m[it.sku] = (m[it.sku] || 0) + Math.max(0, toNum(it.quantity));
+      }
+      return m;
+    };
+
+    const oldMap = buildMap(oldItems);
+    const newMap = buildMap(newItems);
+
+    const deltaMap: Record<string, number> = {};
+    const allSkus = new Set([...Object.keys(oldMap), ...Object.keys(newMap)]);
+
+    for (const sku of allSkus) {
+      const oldReserved =
+        ["Pending", "Processing", "Completed"].includes(oldStatus)
+          ? oldMap[sku] || 0
+          : 0;
+
+      const newReserved =
+        ["Pending", "Processing", "Completed"].includes(newStatus)
+          ? newMap[sku] || 0
+          : 0;
+
+      const delta = oldReserved - newReserved;
+      if (delta !== 0) deltaMap[sku] = delta;
+    }
+
+    const requiredToSubtract: Record<string, number> = {};
+    for (const sku of Object.keys(deltaMap)) {
+      if (deltaMap[sku] < 0) requiredToSubtract[sku] = Math.abs(deltaMap[sku]);
+    }
+
+    if (Object.keys(requiredToSubtract).length > 0) {
+      const avail = await checkAvailability(requiredToSubtract);
+      if (!avail.ok) {
+        return new Response(
+          JSON.stringify({
+            success: false,
+            message: "Insufficient stock for update",
+            details: avail.insufficient,
+          }),
+          { status: 400, headers: { "Content-Type": "application/json" } }
+        );
+      }
+    }
+
+    await db.collection("Orders").updateOne(
+      { _id: orderId },
+      {
+        $set: {
+          customerName: body.customerName,
+          orderDate: body.orderDate,
+          items: newItems,
+          totalAmount: Number(body.totalAmount || 0),
+          status: newStatus,
+          updatedAt: new Date(),
+        },
+      }
+    );
+
+    const logs = db.collection("AuditLogs");
+
+    if (Object.keys(deltaMap).length > 0) {
+      // Inventory + status change log
+      await applyInventoryDeltas(
+        deltaMap,
+        `Order updated (${id}) – status ${oldStatus} → ${newStatus} – (for ${oldOrder.customerName})`,
+        id
+      );
+    } else if (oldStatus !== newStatus) {
+      // Status-only change log
+      await logs.insertOne({
+        ts: new Date(),
+        action: "order" as LogAction,
+        sku: null,
+        name: null,
+        stockBefore: null,
+        stockAfter: null,
+        delta: null,
+        note: `Order status updated (${id}) – status ${oldStatus} → ${newStatus} – (for ${oldOrder.customerName})`,
+        orderId: id,
+        stockRequestId: null,
+      });
+    }
+
+    return new Response(JSON.stringify({ success: true }), {
       headers: { "Content-Type": "application/json" },
     });
   }
 
   /* =====================================================================
-   PUT (UPDATE ORDER)
-   - Treat Pending & Processing as reserved
-   - Delta = oldReserved - newReserved
-   ===================================================================== */
-if (method === "PUT") {
-  console.log("📩 PUT / Update Order");
-  const url = new URL(request.url);
-  const id = url.searchParams.get("id");
-  if (!id) {
-    return new Response(JSON.stringify({ success: false, message: "Missing order ID" }), {
-      status: 400,
-      headers: { "Content-Type": "application/json" },
-    });
-  }
-
-  const body = await request.json();
-  const newStatus: string = body.status ?? "Pending";
-  const newItems: OrderItem[] = Array.isArray(body.items) ? body.items : [];
-
-  const orderId = new ObjectId(String(id));
-  const oldOrder = await db.collection("Orders").findOne({ _id: orderId });
-
-  if (!oldOrder) {
-    return new Response(JSON.stringify({ success: false, message: "Order not found" }), {
-      status: 404,
-      headers: { "Content-Type": "application/json" },
-    });
-  }
-
-  const oldStatus: string = oldOrder.status ?? "Pending";
-  const oldItems: OrderItem[] = Array.isArray(oldOrder.items) ? oldOrder.items : [];
-
-  // Helper to build map sku -> qty from items array
-  const buildMap = (arr: OrderItem[]) => {
-    const m: Record<string, number> = {};
-    for (const it of arr) {
-      m[it.sku] = (m[it.sku] || 0) + Math.max(0, toNum(it.quantity));
-    }
-    return m;
-  };
-
-  const oldMap = buildMap(oldItems);
-  const newMap = buildMap(newItems);
-
-  console.log("Old status:", oldStatus, "New status:", newStatus);
-  console.log("OldMap:", oldMap, "NewMap:", newMap);
-
-  // Compute delta for inventory adjustments
-  const deltaMap: Record<string, number> = {};
-  const allSkus = new Set<string>([...Object.keys(oldMap), ...Object.keys(newMap)]);
-  for (const sku of allSkus) {
-    // Treat Pending and Processing as reserved
-  // Treat Pending, Processing, and Completed as reserved
-const oldReserved = (oldStatus === "Pending" || oldStatus === "Processing" || oldStatus === "Completed") 
-    ? (oldMap[sku] || 0) : 0;
-
-const newReserved = (newStatus === "Pending" || newStatus === "Processing" || newStatus === "Completed") 
-    ? (newMap[sku] || 0) : 0;
-
-    const delta = oldReserved - newReserved; // positive -> add back, negative -> subtract
-    if (delta !== 0) deltaMap[sku] = delta;
-  }
-
-  console.log("Computed inventory deltaMap:", deltaMap);
-
-  // Check if negative deltas exceed current stock
-  const requiredToSubtract: Record<string, number> = {};
-  for (const sku of Object.keys(deltaMap)) {
-    const change = deltaMap[sku];
-    if (change < 0) requiredToSubtract[sku] = Math.abs(change);
-  }
-
-  if (Object.keys(requiredToSubtract).length > 0) {
-    const avail = await checkAvailability(requiredToSubtract);
-    if (!avail.ok) {
-      console.warn("❌ PUT - insufficient stock for update", avail.insufficient);
-      return new Response(JSON.stringify({
-        success: false,
-        message: "Insufficient stock for update",
-        details: avail.insufficient
-      }), { status: 400, headers: { "Content-Type": "application/json" } });
-    }
-  }
-
-  // Update order in DB
-  const updateData = {
-    customerName: body.customerName,
-    orderDate: body.orderDate,
-    items: newItems,
-    totalAmount: Number(body.totalAmount || 0),
-    status: newStatus,
-    updatedAt: new Date(),
-  };
-
-  const result = await db.collection("Orders").updateOne(
-    { _id: orderId },
-    { $set: updateData }
-  );
-
-  if (result.matchedCount === 0) {
-    return new Response(JSON.stringify({ success: false, message: "Order not found (concurrent?)" }), {
-      status: 404,
-      headers: { "Content-Type": "application/json" },
-    });
-  }
-
-  // Apply inventory changes
-  if (Object.keys(deltaMap).length > 0) {
-    await applyInventoryDeltas(deltaMap);
-    console.log("✅ PUT inventory deltas applied");
-  } else {
-    console.log("No inventory changes required for PUT");
-  }
-
-  return new Response(JSON.stringify({ success: true }), {
-    headers: { "Content-Type": "application/json" },
-  });
-}
-
-
-  /* =====================================================================
-     DELETE (REMOVE ORDER)
-     - Restore inventory if Pending (deducted) or Processing
+     DELETE ORDER
      ===================================================================== */
   if (method === "DELETE") {
     const url = new URL(request.url);
     const id = url.searchParams.get("id");
-    if (!id) return new Response(JSON.stringify({ success: false, message: "Missing order ID" }), { status: 400, headers: { "Content-Type": "application/json" } });
+    if (!id) {
+      return new Response(
+        JSON.stringify({ success: false, message: "Missing order ID" }),
+        { status: 400, headers: { "Content-Type": "application/json" } }
+      );
+    }
 
     const orderId = new ObjectId(id);
     const order = await db.collection("Orders").findOne({ _id: orderId });
-    if (!order) return new Response(JSON.stringify({ success: false, message: "Order not found" }), { status: 404, headers: { "Content-Type": "application/json" } });
+    if (!order) {
+      return new Response(
+        JSON.stringify({ success: false, message: "Order not found" }),
+        { status: 404, headers: { "Content-Type": "application/json" } }
+      );
+    }
 
-    // Restore inventory if previously deducted
-    const items: OrderItem[] = Array.isArray(order.items) ? order.items : [];
     const restoreMap: Record<string, number> = {};
-    for (const it of items) restoreMap[it.sku] = (restoreMap[it.sku] || 0) + toNum(it.quantity);
+    for (const it of order.items as OrderItem[]) {
+      restoreMap[it.sku] = (restoreMap[it.sku] || 0) + toNum(it.quantity);
+    }
 
-    await applyInventoryDeltas(restoreMap);
+    await applyInventoryDeltas(
+      restoreMap,
+      `Order deleted (${id}) – inventory restored – (for ${order.customerName})`,
+      id
+    );
+
     await db.collection("Orders").deleteOne({ _id: orderId });
 
-    return new Response(JSON.stringify({ success: true }), { headers: { "Content-Type": "application/json" } });
+    return new Response(JSON.stringify({ success: true }), {
+      headers: { "Content-Type": "application/json" },
+    });
   }
 
-  return new Response(JSON.stringify({ success: false, message: "Unsupported method" }), { status: 405, headers: { "Content-Type": "application/json" } });
+  return new Response(
+    JSON.stringify({ success: false, message: "Unsupported method" }),
+    { status: 405, headers: { "Content-Type": "application/json" } }
+  );
 }
