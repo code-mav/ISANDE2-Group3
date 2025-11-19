@@ -29,8 +29,8 @@ type InventoryItem = {
   sku: string;
   name: string;
   stock: number;         
-  warehouseCode: string[];           // warehouse codes corresponding to stock
-  warehouseLoc?: string[];           // optional physical locations
+  warehouseCode: string[];           
+  warehouseLoc?: string[];           
   unitPrice?: number;
   category?: string;
   status?: string;
@@ -180,7 +180,7 @@ const removeItem = (sku: string, warehouseCode: string) => {
   form.items.forEach(it => {
     const key = `${it.sku}::${it.warehouseCode}`;
     if (map[key]) {
-      map[key].qty += it.qty; // merge qty
+      map[key].qty += it.qty; 
     } else {
       map[key] = { ...it };
     }
