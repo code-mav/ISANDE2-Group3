@@ -7,7 +7,7 @@ import {
   ScrollRestoration,
   NavLink,
 } from "react-router";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Bell } from "lucide-react";
 import "./app.css";
 
@@ -20,13 +20,56 @@ export const links = () => [
   },
 ];
 
+interface Alert {
+  warehouse: string;
+  supply: string;
+  sku: string;
+  stock: number;
+  status: string;
+}
+
 export function Layout({ children }: { children: React.ReactNode }) {
   const [notificationsOpen, setNotificationsOpen] = useState(false);
-  
-  const alerts = [
-    { warehouse: "Warehouse A", supply: "Generator" },
-    { warehouse: "Warehouse B", supply: "Rice Mill" },
-  ];
+  const [alerts, setAlerts] = useState<Alert[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  // Fetch low stock items from inventory
+  useEffect(() => {
+    const fetchLowStockItems = async () => {
+      try {
+        const res = await fetch('/api/items');
+        const data = await res.json();
+        
+        // Filter for low stock and out of stock items
+        const lowStockItems = data.filter((item: any) => 
+          item.status === "Low Stock" || item.status === "Out of Stock"
+        );
+
+        // Format the alerts
+        const formattedAlerts = lowStockItems.map((item: any) => ({
+          warehouse: Array.isArray(item.warehouseLoc) 
+            ? item.warehouseLoc.join(', ') 
+            : item.warehouseLoc || 'Unknown',
+          supply: item.name,
+          sku: item.sku,
+          stock: item.stock,
+          status: item.status
+        }));
+
+        setAlerts(formattedAlerts);
+      } catch (error) {
+        console.error('Error fetching low stock items:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchLowStockItems();
+    
+    // Optional: Refresh alerts every 30 seconds
+    const interval = setInterval(fetchLowStockItems, 30000);
+    return () => clearInterval(interval);
+  }, []);
 
   return (
     <html lang="en">
@@ -90,13 +133,22 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   <h3 className="font-semibold text-[#0A400C]">Notifications</h3>
                   <p className="text-sm text-[#819067] mt-1">Alerts for low-stock items.</p>
                   <div className="space-y-2 max-h-[300px] overflow-y-auto mt-3">
-                    {alerts.map((a, i) => (
-                      <div key={i} className="bg-white shadow rounded-lg p-3 border-l-4 border-[#0A400C]">
-                        <p className="text-sm text-[#0A400C]">
-                          {a.warehouse} has low stocks of <span className="font-semibold">{a.supply}</span>.
-                        </p>
-                      </div>
-                    ))}
+                    {loading ? (
+                      <p className="text-sm text-gray-500">Loading...</p>
+                    ) : alerts.length === 0 ? (
+                      <p className="text-sm text-gray-500">No low stock alerts</p>
+                    ) : (
+                      alerts.map((a, i) => (
+                        <div key={i} className="bg-white shadow rounded-lg p-3 border-l-4 border-[#0A400C]">
+                          <p className="text-sm text-[#0A400C]">
+                            <span className="font-semibold">{a.supply}</span> ({a.sku})
+                          </p>
+                          <p className="text-xs text-[#819067] mt-1">
+                            {a.warehouse} - Stock: {a.stock} - {a.status}
+                          </p>
+                        </div>
+                      ))
+                    )}
                   </div>
                 </div>
               </>
@@ -114,35 +166,19 @@ export function Layout({ children }: { children: React.ReactNode }) {
   );
 }
 
-export default function App() {
-  return <Outlet />;
+export function ErrorBoundary() {
+  const error = useRouteError();
+  if (isRouteErrorResponse(error)) {
+    return (
+      <div>
+        <h1>{error.status} {error.statusText}</h1>
+        <p>{error.data}</p>
+      </div>
+    );
+  }
+  throw error;
 }
 
-export function ErrorBoundary({ error }: any) {
-  let message = "Oops!";
-  let details = "An unexpected error occurred.";
-  let stack: string | undefined;
-
-  if (isRouteErrorResponse(error)) {
-    message = error.status === 404 ? "404" : "Error";
-    details =
-      error.status === 404
-        ? "The requested page could not be found."
-        : error.statusText || details;
-  } else if (import.meta.env.DEV && error && error instanceof Error) {
-    details = error.message;
-    stack = error.stack;
-  }
-
-  return (
-    <main className="pt-16 p-4 container mx-auto text-gray-800">
-      <h1>{message}</h1>
-      <p>{details}</p>
-      {stack && (
-        <pre className="w-full p-4 overflow-x-auto">
-          <code>{stack}</code>
-        </pre>
-      )}
-    </main>
-  );
+export default function App() {
+  return <Outlet />;
 }
