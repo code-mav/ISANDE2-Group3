@@ -30,7 +30,7 @@ export default function OrdersModule() {
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [filterStatus, setFilterStatus] = useState("All");
   const [searchQuery, setSearchQuery] = useState("");
-  const [sortBy, setSortBy] = useState("newest"); // newest, name, total
+  const [sortBy, setSortBy] = useState("newest"); 
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
@@ -85,48 +85,47 @@ export default function OrdersModule() {
   };
 
   // Add item to order
-const addItemToOrder = (item: InventoryItem) => {
-  if (newOrder.items.find((i) => i.sku === item.sku)) return;
+  const addItemToOrder = (item: InventoryItem) => {
+    if (newOrder.items.find((i) => i.sku === item.sku)) return;
 
-  // Check if stock is zero
-  if ((item.stock || 0) <= 0) {
-    alert(`Cannot add ${item.name}: Out of stock`);
-    return;
-  }
+    // Check if stock is zero
+    if ((item.stock || 0) <= 0) {
+      alert(`Cannot add ${item.name}: Out of stock`);
+      return;
+    }
 
-  const updatedItems = [
-    ...newOrder.items,
-    {
-      sku: item.sku,
-      name: item.name,
-      unitPrice: item.unitPrice ?? 0,
-      quantity: 1,
-      subtotal: item.unitPrice ?? 0,
-    },
-  ];
-  const total = updatedItems.reduce((sum, i) => sum + i.subtotal, 0);
-  setNewOrder({ ...newOrder, items: updatedItems, totalAmount: total });
-};
+    const updatedItems = [
+      ...newOrder.items,
+      {
+        sku: item.sku,
+        name: item.name,
+        unitPrice: item.unitPrice ?? 0,
+        quantity: 1,
+        subtotal: item.unitPrice ?? 0,
+      },
+    ];
+    const total = updatedItems.reduce((sum, i) => sum + i.subtotal, 0);
+    setNewOrder({ ...newOrder, items: updatedItems, totalAmount: total });
+  };
 
-// Update item quantity
-const updateItemQuantity = (sku: string, quantity: number) => {
-  const inventoryItem = inventory.find((i) => i.sku === sku);
-  const available = inventoryItem?.stock ?? 0;
+  // Update item quantity
+  const updateItemQuantity = (sku: string, quantity: number) => {
+    const inventoryItem = inventory.find((i) => i.sku === sku);
+    const available = inventoryItem?.stock ?? 0;
 
-  if (quantity > available) {
-    alert(`Cannot set quantity beyond available stock (${available})`);
-    return;
-  }
+    if (quantity > available) {
+      alert(`Cannot set quantity beyond available stock (${available})`);
+      return;
+    }
 
-  const updatedItems = newOrder.items.map((item) =>
-    item.sku === sku
-      ? { ...item, quantity, subtotal: item.unitPrice * quantity }
-      : item
-  );
-  const total = updatedItems.reduce((sum, i) => sum + i.subtotal, 0);
-  setNewOrder({ ...newOrder, items: updatedItems, totalAmount: total });
-};
-
+    const updatedItems = newOrder.items.map((item) =>
+      item.sku === sku
+        ? { ...item, quantity, subtotal: item.unitPrice * quantity }
+        : item
+    );
+    const total = updatedItems.reduce((sum, i) => sum + i.subtotal, 0);
+    setNewOrder({ ...newOrder, items: updatedItems, totalAmount: total });
+  };
 
   // Remove item from order
   const removeItem = (sku: string) => {
@@ -163,53 +162,58 @@ const updateItemQuantity = (sku: string, quantity: number) => {
 
   // Delete order
   const deleteOrder = async (id: string) => {
-  if (!confirm("Are you sure you want to delete this order?")) return;
+    if (!confirm("Are you sure you want to delete this order?")) return;
 
-  const res = await fetch(`/api/orders?id=${id}`, {
-    method: "DELETE",
-  });
+    const res = await fetch(`/api/orders?id=${id}`, {
+      method: "DELETE",
+    });
 
-  if (res.ok) {
-    alert("Order deleted!");
-    fetchOrders();
-  } else {
-    alert("Failed to delete.");
-  }
-};
+    if (res.ok) {
+      alert("Order deleted!");
+      fetchOrders();
+    } else {
+      alert("Failed to delete.");
+    }
+  };
 
   // Sort orders
   const sortedOrders = [...orders].sort((a, b) => {
     if (sortBy === "name") return a.customerName.localeCompare(b.customerName);
     if (sortBy === "total") return b.totalAmount - a.totalAmount;
-    if (sortBy === "newest") return new Date(b.orderDate).getTime() - new Date(a.orderDate).getTime();
+    if (sortBy === "newest")
+      return new Date(b.orderDate).getTime() - new Date(a.orderDate).getTime();
     return 0;
   });
 
   // Filter + Search
   const filteredOrders = sortedOrders
     .filter((o) => (filterStatus === "All" ? true : o.status === filterStatus))
-    .filter((o) => o.customerName.toLowerCase().includes(searchQuery.toLowerCase()));
+    .filter((o) =>
+      o.customerName.toLowerCase().includes(searchQuery.toLowerCase())
+    );
 
-    // Status color mapping
-const getStatusColor = (status: string) => {
-  switch (status) {
-    case "Cancelled":
-      return "text-red-600 font-semibold";
-    case "Completed":
-      return "text-green-600 font-semibold";
-    case "Processing":
-      return "text-yellow-600 font-semibold";
-    default:
-      return "text-gray-700";
-  }
-};
+  // Status color mapping
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case "Cancelled":
+        return "text-red-600 font-semibold";
+      case "Completed":
+        return "text-green-600 font-semibold";
+      case "Processing":
+        return "text-yellow-600 font-semibold";
+      default:
+        return "text-gray-700";
+    }
+  };
 
   return (
     <div className="p-6 min-h-screen bg-[#FAF8F0]">
       {/* Header */}
       <div className="text-center mb-6">
         <h1 className="text-3xl font-bold text-[#0A400C]">Order Management</h1>
-        <p className="mt-2 text-[#819067] text-lg">Create and view customer orders.</p>
+        <p className="mt-2 text-[#819067] text-lg">
+          Create and view customer orders.
+        </p>
         <button
           onClick={openModal}
           className="mt-4 px-6 py-2 bg-[#0A400C] text-white rounded-lg hover:bg-green-900 transition"
@@ -280,6 +284,7 @@ const getStatusColor = (status: string) => {
           <thead className="border-b">
             <tr className="text-[#0A400C]">
               <th className="p-2">#</th>
+              <th className="p-2">Ref ID</th>
               <th className="p-2">Customer</th>
               <th className="p-2">Date</th>
               <th className="p-2">Items</th>
@@ -291,34 +296,47 @@ const getStatusColor = (status: string) => {
           <tbody>
             {filteredOrders.length > 0 ? (
               filteredOrders.map((o, index) => (
-                <tr key={o._id || index} className="border-b hover:bg-gray-50">
+                <tr
+                  key={o._id || index}
+                  className="border-b hover:bg-gray-50"
+                >
                   <td className="p-2">{index + 1}</td>
+                  {/* Ref ID = same Mongo _id used in Reports logs */}
+                  <td className="p-2 text-xs text-gray-500">
+                    {o._id || "—"}
+                  </td>
                   <td className="p-2">{o.customerName}</td>
                   <td className="p-2">{o.orderDate}</td>
                   <td className="p-2">{o.items.length} item(s)</td>
-                  <td className="p-2 font-semibold">₱{o.totalAmount.toFixed(2)}</td>
-                  <td className={`p-2 ${getStatusColor(o.status)}`}>{o.status}</td>
+                  <td className="p-2 font-semibold">
+                    ₱{o.totalAmount.toFixed(2)}
+                  </td>
+                  <td className={`p-2 ${getStatusColor(o.status)}`}>
+                    {o.status}
+                  </td>
                   <td className="p-2 flex gap-2 justify-center">
-  <button
-    onClick={() => openEditModal(o)}
-    className="px-2 py-1 bg-[#E0DCC7] text-[#0A400C] rounded-md text-sm hover:bg-[#D6D1B1]"
-  >
-    ✏️
-  </button>
+                    <button
+                      onClick={() => openEditModal(o)}
+                      className="px-2 py-1 bg-[#E0DCC7] text-[#0A400C] rounded-md text-sm hover:bg-[#D6D1B1]"
+                    >
+                      ✏️
+                    </button>
 
-  <button
-    onClick={() => deleteOrder(o._id!)}
-    className="px-2 py-1 bg-red-600 text-white rounded-md text-sm hover:bg-red-700"
-  >
-    🗑️
-  </button>
-</td>
-
+                    <button
+                      onClick={() => deleteOrder(o._id!)}
+                      className="px-2 py-1 bg-red-600 text-white rounded-md text-sm hover:bg-red-700"
+                    >
+                      🗑️
+                    </button>
+                  </td>
                 </tr>
               ))
             ) : (
               <tr>
-                <td colSpan={7} className="p-4 text-center text-[#819067] italic">
+                <td
+                  colSpan={8}
+                  className="p-4 text-center text-[#819067] italic"
+                >
                   No orders found.
                 </td>
               </tr>
@@ -413,13 +431,20 @@ const getStatusColor = (status: string) => {
                             min="1"
                             value={item.quantity}
                             onChange={(e) =>
-                              updateItemQuantity(item.sku, Number(e.target.value))
+                              updateItemQuantity(
+                                item.sku,
+                                Number(e.target.value)
+                              )
                             }
                             className="w-16 border rounded p-1 text-center"
                           />
                         </td>
-                        <td className="p-2">₱{item.unitPrice.toFixed(2)}</td>
-                        <td className="p-2 font-semibold">₱{item.subtotal.toFixed(2)}</td>
+                        <td className="p-2">
+                          ₱{item.unitPrice.toFixed(2)}
+                        </td>
+                        <td className="p-2 font-semibold">
+                          ₱{item.subtotal.toFixed(2)}
+                        </td>
                         <td className="p-2">
                           <button
                             onClick={() => removeItem(item.sku)}
