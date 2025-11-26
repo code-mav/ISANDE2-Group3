@@ -60,7 +60,7 @@ export default function StockLevelBarChart({ items }: Props) {
               {chartData.map((entry, index) => (
                 <Cell
                   key={`cell-${index}`}
-                  fill={entry.stock < 5 ? "#C0392B" : "#819067"}
+                  fill={entry.stock <= 5 ? "#C0392B" : "#819067"}
                 />
               ))}
             </Bar>
