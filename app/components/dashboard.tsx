@@ -1,6 +1,8 @@
 // components/dashboard.tsx
 
 import { useEffect, useState } from "react";
+import StockLevelBarChart from "./stockLevelBarChart";
+
 
 interface Item {
   _id?: string;
@@ -77,9 +79,11 @@ export default function Dashboard() {
       <div className="grid grid-cols-2 gap-6 mt-8">
         <div className="bg-white rounded-2xl shadow p-6">
           <h2 className="font-semibold text-[#0A400C] mb-4">Stock Levels</h2>
-          <div className="h-48 flex items-center justify-center text-gray-500">
-            [Stock Level Chart Placeholder]
-          </div>
+            {isLoading ? (
+            <p className="text-[#819067] italic">Loading chart...</p>
+          ) : (
+            <StockLevelBarChart items={items} />
+          )}
         </div>
         <div className="bg-white rounded-2xl shadow p-6">
           <h2 className="font-semibold text-[#0A400C] mb-4">Stock by Supplier</h2>
