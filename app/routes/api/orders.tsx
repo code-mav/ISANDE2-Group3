@@ -1,11 +1,33 @@
 import clientPromise from "~/utils/mongo.server";
 import { ObjectId } from "mongodb";
 
+function deductFromWarehouses(stockObj: any, amount: number) {
+  const entries = Object.entries(stockObj)
+    .map(([k, v]) => [k, Number(v ?? 0)] as [string, number])
+    .sort((a, b) => b[1] - a[1]);
+  let remaining = amount;
+
+  for (const [wh, qty] of entries) {
+    if (remaining <= 0) break;
+    const take = Math.min(qty, remaining);
+    stockObj[wh] = qty - take;
+    remaining -= take;
+  }
+
+  return stockObj;
+}
+
+function addBackToWarehouse(stockObj: any, warehouse: string, amount: number) {
+  stockObj[warehouse] = (stockObj[warehouse] ?? 0) + amount;
+  return stockObj;
+}
+
 type OrderItem = {
   sku: string;
   quantity: number;
   name?: string;
   unitPrice?: number;
+  warehouseCode?: string;
 };
 
 type LogAction = "create" | "update" | "delete" | "order" | "stockrequest";
@@ -43,9 +65,31 @@ export async function action({ request }: { request: Request }) {
 
     for (const sku of Object.keys(reqMap)) {
       const need = reqMap[sku];
-      const inv = await db.collection("Inventory").findOne({ sku });
-      const have = inv ? toNum(inv.stock) : 0;
-      if (have < need) insufficient.push({ sku, have, need });
+      // support keys like "SKU::WH" or just "SKU"
+      const parts = sku.split("::");
+      const skuOnly = parts[0];
+      const wh = parts[1];
+      const inv = await db.collection("Inventory").findOne({ sku: skuOnly });
+      let have = 0;
+      if (!inv) {
+        have = 0;
+      } else if (wh) {
+        // check specific warehouse qty
+        if (inv.stock && typeof inv.stock === "object") {
+          have = Number(inv.stock[wh] ?? 0);
+        } else {
+          // no per-warehouse data, treat whole stock as available
+          have = toNum(inv.stock);
+        }
+      } else {
+        // total across warehouses
+        if (inv && typeof inv.stock === "number") have = Number(inv.stock);
+        else if (inv && typeof inv.stock === "object")
+          have = (Object.values(inv.stock).map((v: any) => Number(v ?? 0)) as number[]).reduce((a, b) => a + b, 0);
+        else have = 0;
+      }
+
+      if (have < need) insufficient.push({ sku: skuOnly, have, need });
     }
 
     return { ok: insufficient.length === 0, insufficient };
@@ -62,31 +106,59 @@ export async function action({ request }: { request: Request }) {
 
     for (const sku of Object.keys(deltaMap)) {
       const delta = deltaMap[sku];
-      const inv = await invCol.findOne({ sku });
+      // key may be "SKU::WH" or "SKU"
+      const parts = sku.split("::");
+      const skuOnly = parts[0];
+      const wh = parts[1];
+      const inv = await invCol.findOne({ sku: skuOnly });
 
-      const beforeStock =
-        inv && typeof inv.stock === "number"
-          ? Number(inv.stock)
-          : inv && Array.isArray(inv.stock)
-          ? inv.stock.reduce(
-              (a: number, b: any) => a + Number(b ?? 0),
-              0
-            )
-          : null;
+      // Capture before stock (object if exists, else numeric)
+      let beforeStock: number | Record<string, number> | null = null;
+      if (inv) {
+        beforeStock = typeof inv.stock === "object" ? inv.stock : inv.stock;
+      }
 
-      const afterStock =
-        beforeStock !== null ? beforeStock + delta : null;
+      let stockObj = inv && typeof inv.stock === "object" ? { ...inv.stock } : { VL1: Number(inv?.stock ?? 0) };
 
-      await invCol.updateOne({ sku }, { $inc: { stock: delta } });
+      if (delta < 0) {
+        const qty = Math.abs(delta);
+        if (wh) {
+          stockObj[wh] = Math.max(0, (stockObj[wh] ?? 0) - qty);
+        } else {
+          stockObj = deductFromWarehouses(stockObj, qty);
+        }
+      } else if (delta > 0) {
+        if (wh) {
+          stockObj = addBackToWarehouse(stockObj, wh, delta);
+        } else {
+          stockObj = addBackToWarehouse(stockObj, "VL1", delta);
+        }
+      }
+
+      // Capture after stock (object)
+      const afterStock = stockObj;
+
+      // Calculate numeric delta for display
+      const beforeNum = beforeStock !== null
+        ? typeof beforeStock === "number"
+          ? beforeStock
+          : (Object.values(beforeStock).map((v: any) => Number(v ?? 0)) as number[]).reduce((a, b) => a + b, 0)
+        : null;
+      const afterNum = typeof afterStock === "object"
+        ? (Object.values(afterStock).map((v: any) => Number(v ?? 0)) as number[]).reduce((a, b) => a + b, 0)
+        : Number(afterStock);
+      const numericDelta = beforeNum !== null ? afterNum - beforeNum : null;
+
+      await invCol.updateOne({ sku: skuOnly }, { $set: { stock: stockObj } });
 
       await logs.insertOne({
         ts: new Date(),
         action: "order" as LogAction,
-        sku,
+        sku: skuOnly,
         name: inv?.name ?? null,
         stockBefore: beforeStock,
         stockAfter: afterStock,
-        delta,
+        delta: numericDelta,
         note,
         orderId,
         stockRequestId: null,
@@ -105,7 +177,8 @@ export async function action({ request }: { request: Request }) {
     const needMap: Record<string, number> = {};
     for (const it of items) {
       const qty = Math.max(0, toNum(it.quantity));
-      needMap[it.sku] = (needMap[it.sku] || 0) + qty;
+      const key = it.sku + (it.warehouseCode ? `::${it.warehouseCode}` : "");
+      needMap[key] = (needMap[key] || 0) + qty;
     }
 
     // Check availability
@@ -184,7 +257,8 @@ export async function action({ request }: { request: Request }) {
     const buildMap = (arr: OrderItem[]) => {
       const m: Record<string, number> = {};
       for (const it of arr) {
-        m[it.sku] = (m[it.sku] || 0) + Math.max(0, toNum(it.quantity));
+        const key = it.sku + (it.warehouseCode ? `::${it.warehouseCode}` : "");
+        m[key] = (m[key] || 0) + Math.max(0, toNum(it.quantity));
       }
       return m;
     };
@@ -297,7 +371,8 @@ export async function action({ request }: { request: Request }) {
 
     const restoreMap: Record<string, number> = {};
     for (const it of order.items as OrderItem[]) {
-      restoreMap[it.sku] = (restoreMap[it.sku] || 0) + toNum(it.quantity);
+      const key = it.sku + (it.warehouseCode ? `::${it.warehouseCode}` : "");
+      restoreMap[key] = (restoreMap[key] || 0) + toNum(it.quantity);
     }
 
     await applyInventoryDeltas(

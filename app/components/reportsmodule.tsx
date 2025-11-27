@@ -13,8 +13,8 @@ interface LogEntry {
   action: LogAction;
   sku?: string;
   name?: string;
-  stockBefore?: number | null;
-  stockAfter?: number | null;
+  stockBefore?: number | Record<string, number> | null;
+  stockAfter?: number | Record<string, number> | null;
   delta?: number | null;
   note?: string;
 
@@ -29,11 +29,18 @@ interface Item {
   category: string;
   warehouseLoc: string;
   warehouseCode: string;
-  stock: number;
+  stock: number | Record<string, number>;
+  unitPrice?: number;
   status: string;
   note?: string;
   createdAt?: string;
   updatedAt?: string;
+}
+
+// Helper to compute total stock across all warehouses
+function totalStock(stockValue: number | Record<string, number>): number {
+  if (typeof stockValue === "number") return stockValue;
+  return (Object.values(stockValue).map((v) => Number(v ?? 0)) as number[]).reduce((a, b) => a + b, 0);
 }
 
 interface OrderSummary {
@@ -103,6 +110,27 @@ function csvEscape(value: any): string {
   const mustQuote = s.includes(",") || s.includes('"') || s.includes("\n");
   if (!mustQuote) return s;
   return `"${s.replace(/"/g, '""')}"`;
+}
+
+// Helper to safely encode text for jsPDF
+function sanitizeForPDF(text: any): string {
+  if (text === null || text === undefined) return "—";
+  const str = String(text);
+  // Only escape actual problematic HTML entities that cause splitting
+  // Keep currency and arrow symbols intact
+  return str;
+}
+
+// Helper to format stock for display (handles both number and object)
+function formatStockDisplay(
+  stock: number | Record<string, number> | null | undefined
+): string {
+  if (stock === null || stock === undefined) return "—";
+  if (typeof stock === "number") return stock.toString();
+  // For object, show as: "VL1: 10, VL2: 5"
+  return Object.entries(stock)
+    .map(([wh, qty]) => `${wh}: ${qty}`)
+    .join(", ");
 }
 
 export default function ReportsModule() {
@@ -261,15 +289,17 @@ export default function ReportsModule() {
 
     const totalSkus = items.length;
     const totalUnits = items.reduce(
-      (sum, it) => sum + (Number(it.stock) || 0),
+      (sum, it) => sum + totalStock(it.stock),
       0
     );
     const lowStock = items.filter(
-      (it) =>
-        Number(it.stock) > 0 && Number(it.stock) <= 5
+      (it) => {
+        const stock = totalStock(it.stock);
+        return stock > 0 && stock <= 5;
+      }
     ).length;
     const outOfStock = items.filter(
-      (it) => Number(it.stock) <= 0
+      (it) => totalStock(it.stock) <= 0
     ).length;
 
     const catMap = new Map<
@@ -289,14 +319,14 @@ export default function ReportsModule() {
         skus: (catMap.get(cat)?.skus || 0) + 1,
         units:
           (catMap.get(cat)?.units || 0) +
-          (Number(it.stock) || 0),
+          totalStock(it.stock),
       });
 
       whMap.set(wh, {
         skus: (whMap.get(wh)?.skus || 0) + 1,
         units:
           (whMap.get(wh)?.units || 0) +
-          (Number(it.stock) || 0),
+          totalStock(it.stock),
       });
     });
 
@@ -383,176 +413,231 @@ export default function ReportsModule() {
     allRowIds.length > 0 &&
     selectedIds.length === allRowIds.length;
 
-  // ---------- Download CSV for current report ----------
-  const handleDownloadReport = () => {
-    const lines: string[] = [];
+  // ---------- Download PDF for current report ----------
+  const handleDownloadReport = async () => {
+    try {
+      const { jsPDF } = await import("jspdf");
+      const doc = new jsPDF();
+      
+      const pageHeight = doc.internal.pageSize.getHeight();
+      let yPosition = 15;
+      const margin = 10;
+      const lineHeight = 8;
+      const maxWidth = 190;
 
-    // Metadata / header
-    lines.push("Section,Field,Value");
-    lines.push(
-      [
-        "Report",
-        "Generated At",
-        csvEscape(generatedAt || "")
-      ].join(",")
-    );
-    lines.push([
-      "Report",
-      "From",
-      csvEscape(reportRange?.from || "")
-    ].join(","));
-    lines.push([
-      "Report",
-      "To",
-      csvEscape(reportRange?.to || "")
-    ].join(","));
-    lines.push([
-      "Inventory",
-      "Total SKUs",
-      csvEscape(summary.totalSkus)
-    ].join(","));
-    lines.push([
-      "Inventory",
-      "Total Units",
-      csvEscape(summary.totalUnits)
-    ].join(","));
-    lines.push([
-      "Inventory",
-      "Low Stock",
-      csvEscape(summary.lowStock)
-    ].join(","));
-    lines.push([
-      "Inventory",
-      "Out of Stock",
-      csvEscape(summary.outOfStock)
-    ].join(","));
+      // Title
+      doc.setFontSize(16);
+      doc.setTextColor(10, 64, 12);
+      doc.text("Inventory & Activity Report", margin, yPosition);
+      yPosition += lineHeight + 3;
 
-    if (orderSummary) {
-      lines.push([
-        "Orders",
-        "Total Orders",
-        csvEscape(orderSummary.total)
-      ].join(","));
-      lines.push([
-        "Orders",
-        "Total Amount",
-        csvEscape(orderSummary.totalAmount.toFixed(2))
-      ].join(","));
+      // Metadata
+      doc.setFontSize(10);
+      doc.setTextColor(80, 80, 80);
+      doc.text(`Generated: ${sanitizeForPDF(generatedAt || "—")}`, margin, yPosition);
+      yPosition += lineHeight;
+      const periodText = reportRange ? `${reportRange.from} to ${reportRange.to}` : "—";
+      doc.text(
+        `Period: ${sanitizeForPDF(periodText)}`,
+        margin,
+        yPosition
+      );
+      yPosition += lineHeight + 5;
+
+      // Summary section
+      doc.setFontSize(13);
+      doc.setTextColor(10, 64, 12);
+      doc.text("Inventory Summary", margin, yPosition);
+      yPosition += lineHeight;
+
+      doc.setFontSize(10);
+      doc.setTextColor(80, 80, 80);
+      doc.text(`Total SKUs: ${summary.totalSkus}`, margin + 5, yPosition);
+      yPosition += lineHeight;
+      doc.text(`Total Units: ${summary.totalUnits}`, margin + 5, yPosition);
+      yPosition += lineHeight;
+      doc.text(`Low Stock Items: ${summary.lowStock}`, margin + 5, yPosition);
+      yPosition += lineHeight;
+      doc.text(`Out of Stock: ${summary.outOfStock}`, margin + 5, yPosition);
+      yPosition += lineHeight + 3;
+
+      // Orders summary
+      if (orderSummary) {
+        doc.setFontSize(13);
+        doc.setTextColor(10, 64, 12);
+        doc.text("Orders Summary", margin, yPosition);
+        yPosition += lineHeight;
+
+        doc.setFontSize(10);
+        doc.setTextColor(80, 80, 80);
+        doc.text(
+          `Total Orders: ${orderSummary.total}`,
+          margin + 5,
+          yPosition
+        );
+        yPosition += lineHeight;
+        const totalAmtStr = String(orderSummary.totalAmount.toFixed(2));
+        doc.text(
+          `Total Amount: P${totalAmtStr}`,
+          margin + 5,
+          yPosition
+        );
+        yPosition += lineHeight + 3;
+      }
+
+      // Stock Requests summary
+      if (stockSummary) {
+        doc.setFontSize(13);
+        doc.setTextColor(10, 64, 12);
+        doc.text("Stock Requests Summary", margin, yPosition);
+        yPosition += lineHeight;
+
+        doc.setFontSize(10);
+        doc.setTextColor(80, 80, 80);
+        const stockTotal = String(stockSummary.total);
+        doc.text(
+          `Total Stock Requests: ${stockTotal}`,
+          margin + 5,
+          yPosition
+        );
+        yPosition += lineHeight + 3;
+      }
+
+      // Add page break if needed
+      if (yPosition > pageHeight - 60) {
+        doc.addPage();
+        yPosition = margin;
+      }
+
+      // Orders section
+      if (ordersInRange.length > 0) {
+        doc.setFontSize(13);
+        doc.setTextColor(10, 64, 12);
+        doc.text("Orders in Period", margin, yPosition);
+        yPosition += lineHeight + 2;
+
+        doc.setFontSize(9);
+        doc.setTextColor(0, 0, 0);
+        ordersInRange.slice(0, 5).forEach((o) => {
+          if (yPosition > pageHeight - 20) {
+            doc.addPage();
+            yPosition = margin;
+          }
+          const orderDate = sanitizeForPDF(o.orderDate || "—");
+          const orderId = sanitizeForPDF(o._id || "—");
+          const custName = sanitizeForPDF(o.customerName || "—");
+          const orderStatus = sanitizeForPDF(o.status || "—");
+          const orderAmt = sanitizeForPDF(typeof o.totalAmount === "number" ? o.totalAmount.toFixed(2) : "0.00");
+          doc.text(
+            `${orderDate} | ${orderId} | ${custName} | ${orderStatus} | P${orderAmt}`,
+            margin,
+            yPosition,
+            { maxWidth: maxWidth }
+          );
+          yPosition += lineHeight;
+        });
+        if (ordersInRange.length > 5) {
+          const moreOrders = String(ordersInRange.length - 5);
+          doc.text(`... and ${moreOrders} more orders`, margin, yPosition);
+          yPosition += lineHeight;
+        }
+        yPosition += 3;
+      }
+
+      // Stock Requests section
+      if (stockRequestsInRange.length > 0) {
+        if (yPosition > pageHeight - 40) {
+          doc.addPage();
+          yPosition = margin;
+        }
+
+        doc.setFontSize(13);
+        doc.setTextColor(10, 64, 12);
+        doc.text("Stock Requests in Period", margin, yPosition);
+        yPosition += lineHeight + 2;
+
+        doc.setFontSize(9);
+        doc.setTextColor(0, 0, 0);
+        stockRequestsInRange.slice(0, 5).forEach((sr) => {
+          if (yPosition > pageHeight - 20) {
+            doc.addPage();
+            yPosition = margin;
+          }
+          const srDate = sanitizeForPDF(sr.date || "—");
+          const srId = sanitizeForPDF(sr.requestId || "—");
+          const srRequester = sanitizeForPDF(sr.requester || "—");
+          const srWarehouse = sanitizeForPDF(sr.warehouse || "—");
+          const srStatus = sanitizeForPDF(sr.status || "—");
+          doc.text(
+            `${srDate} | ${srId} | ${srRequester} | ${srWarehouse} | ${srStatus}`,
+            margin,
+            yPosition,
+            { maxWidth: maxWidth }
+          );
+          yPosition += lineHeight;
+        });
+        if (stockRequestsInRange.length > 5) {
+          const moreCount = String(stockRequestsInRange.length - 5);
+          doc.text(`... and ${moreCount} more requests`, margin, yPosition);
+          yPosition += lineHeight;
+        }
+        yPosition += 3;
+      }
+
+      // Inventory items section
+      if (items.length > 0) {
+        if (yPosition > pageHeight - 40) {
+          doc.addPage();
+          yPosition = margin;
+        }
+
+        doc.setFontSize(13);
+        doc.setTextColor(10, 64, 12);
+        doc.text("Inventory Snapshot", margin, yPosition);
+        yPosition += lineHeight + 2;
+
+        doc.setFontSize(8);
+        doc.setTextColor(0, 0, 0);
+        const sortedItems = items
+          .slice()
+          .sort((a, b) => {
+            const tA = new Date(a.updatedAt || a.createdAt || 0).getTime();
+            const tB = new Date(b.updatedAt || b.createdAt || 0).getTime();
+            return tB - tA;
+          });
+        
+        sortedItems.forEach((it, index) => {
+          if (yPosition > pageHeight - 15) {
+            doc.addPage();
+            yPosition = margin;
+          }
+          const stockNum = totalStock(it.stock);
+          const statusText = statusFromStock(stockNum);
+          const itemSku = sanitizeForPDF(it.sku || "—");
+          const itemName = sanitizeForPDF(it.name || "—");
+          const itemCat = sanitizeForPDF(it.category || "—");
+          const itemStock = sanitizeForPDF(formatStockDisplay(it.stock));
+          const itemPrice = sanitizeForPDF(it.unitPrice?.toFixed(2) ?? "0.00");
+          doc.text(
+            `${itemSku} | ${itemName} | ${itemCat} | Stock: ${itemStock} | P${itemPrice} | ${statusText}`,
+            margin,
+            yPosition,
+            { maxWidth: maxWidth }
+          );
+          yPosition += lineHeight;
+        });
+      }
+
+      // Save PDF
+      const filenameBase =
+        reportRange && reportRange.from && reportRange.to
+          ? `inventory-report_${reportRange.from}_to_${reportRange.to}`
+          : "inventory-report";
+      doc.save(`${filenameBase}.pdf`);
+    } catch (error) {
+      console.error("Error generating PDF:", error);
+      alert("Failed to generate PDF. Please try again.");
     }
-
-    if (stockSummary) {
-      lines.push([
-        "Stock Requests",
-        "Total Requests",
-        csvEscape(stockSummary.total)
-      ].join(","));
-    }
-
-    lines.push(""); // blank line
-
-    // Orders table
-    lines.push("Orders");
-    lines.push(
-      [
-        "Order Date",
-        "Order ID",
-        "Customer",
-        "Status",
-        "Total Amount"
-      ].map(csvEscape).join(",")
-    );
-    ordersInRange.forEach((o) => {
-      lines.push(
-        [
-          o.orderDate || "",
-          o._id || "",
-          o.customerName || "",
-          o.status || "",
-          typeof o.totalAmount === "number"
-            ? o.totalAmount.toFixed(2)
-            : ""
-        ].map(csvEscape).join(",")
-      );
-    });
-
-    lines.push(""); // blank line
-
-    // Stock Requests table
-    lines.push("Stock Requests");
-    lines.push(
-      [
-        "Date",
-        "Request ID",
-        "Requester",
-        "Warehouse",
-        "Status"
-      ].map(csvEscape).join(",")
-    );
-    stockRequestsInRange.forEach((sr) => {
-      lines.push(
-        [
-          sr.date || "",
-          sr.requestId || "",
-          sr.requester || "",
-          sr.warehouse || "",
-          sr.status || ""
-        ].map(csvEscape).join(",")
-      );
-    });
-
-    lines.push(""); // blank line
-
-    // Inventory snapshot table
-    lines.push("Inventory Snapshot");
-    lines.push(
-      [
-        "SKU",
-        "Item Name",
-        "Category",
-        "Warehouse",
-        "Code",
-        "Stock",
-        "Status",
-        "Note",
-        "Updated At"
-      ].map(csvEscape).join(",")
-    );
-    items.forEach((it) => {
-      const stockNum = Number(it.stock) || 0;
-      lines.push(
-        [
-          it.sku,
-          it.name,
-          it.category,
-          it.warehouseLoc,
-          it.warehouseCode,
-          stockNum,
-          it.status,
-          it.note || "",
-          it.updatedAt || it.createdAt || ""
-        ].map(csvEscape).join(",")
-      );
-    });
-
-    const csvContent = lines.join("\r\n");
-    const blob = new Blob([csvContent], {
-      type: "text/csv;charset=utf-8;"
-    });
-
-    const filenameBase =
-      reportRange && reportRange.from && reportRange.to
-        ? `inventory-report_${reportRange.from}_to_${reportRange.to}`
-        : "inventory-report";
-    const filename = `${filenameBase}.csv`;
-
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
   };
 
   return (
@@ -726,11 +811,11 @@ export default function ReportsModule() {
                     <td className="p-2">
                       {log.name || "—"}
                     </td>
-                    <td className="p-2">
-                      {log.stockBefore ?? "—"}
+                    <td className="p-2 text-xs">
+                      {formatStockDisplay(log.stockBefore)}
                     </td>
-                    <td className="p-2">
-                      {log.stockAfter ?? "—"}
+                    <td className="p-2 text-xs">
+                      {formatStockDisplay(log.stockAfter)}
                     </td>
                     <td className="p-2 font-semibold">
                       {typeof log.delta === "number"
@@ -809,7 +894,7 @@ export default function ReportsModule() {
                   className="px-3 py-1 bg-[#0A400C] text-white rounded-lg hover:bg-green-900 text-sm"
                   disabled={reportLoading}
                 >
-                  Download CSV
+                  Download PDF
                 </button>
                 <button
                   onClick={() => setReportOpen(false)}
@@ -1050,17 +1135,18 @@ export default function ReportsModule() {
                     {summary.outOfStock}
                   </p>
                   <table className="w-full text-left">
-                    <thead className="border-b">
+                    <thead className="border-b bg-[#F9F8F4]">
                       <tr className="text-[#0A400C]">
-                        <th className="p-2">SKU</th>
-                        <th className="p-2">Item</th>
-                        <th className="p-2">Category</th>
-                        <th className="p-2">Warehouse</th>
-                        <th className="p-2">Code</th>
-                        <th className="p-2">Stock</th>
-                        <th className="p-2">Status</th>
-                        <th className="p-2">Note</th>
-                        <th className="p-2">Updated</th>
+                        <th className="p-3">#</th>
+                        <th className="p-3">SKU</th>
+                        <th className="p-3">Item Name</th>
+                        <th className="p-3">Category</th>
+                        <th className="p-3">Warehouse</th>
+                        <th className="p-3">Stock</th>
+                        <th className="p-3 text-right">Unit Price (₱)</th>
+                        <th className="p-3 text-center">Status</th>
+                        <th className="p-3">Note</th>
+                        <th className="p-3">Updated</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1081,7 +1167,7 @@ export default function ReportsModule() {
                         })
                         .map((it, idx) => {
                           const stockNum =
-                            Number(it.stock) || 0;
+                            totalStock(it.stock);
                           const statusText =
                             statusFromStock(stockNum);
                           return (
@@ -1089,31 +1175,53 @@ export default function ReportsModule() {
                               key={it._id || idx}
                               className="border-b hover:bg-gray-50"
                             >
-                              <td className="p-2 font-semibold">
+                              <td className="p-3">{idx + 1}</td>
+                              <td className="p-3 font-semibold">
                                 {it.sku}
                               </td>
-                              <td className="p-2">
+                              <td className="p-3">
                                 {it.name}
                               </td>
-                              <td className="p-2">
+                              <td className="p-3">
                                 {it.category}
                               </td>
-                              <td className="p-2">
+                              <td className="p-3">
                                 {it.warehouseLoc}
                               </td>
-                              <td className="p-2">
-                                {it.warehouseCode}
+                              <td className="p-3 align-top">
+                                <div className="flex flex-wrap gap-2">
+                                  {typeof it.stock === "object" && it.stock
+                                    ? Object.entries(it.stock).map(
+                                        ([wh, qty]) => (
+                                          <span
+                                            key={wh}
+                                            className={`px-2 py-1 text-xs rounded-md border ${
+                                              Number(qty ?? 0) <= 5
+                                                ? "bg-red-100 text-red-700 border-red-300"
+                                                : "bg-green-100 text-green-700 border-green-300"
+                                            }`}
+                                          >
+                                            {wh}: {Number(qty ?? 0)}
+                                          </span>
+                                        )
+                                      )
+                                    : (
+                                        <span
+                                          className={`px-2 py-1 text-xs rounded-md border ${
+                                            stockNum <= 5
+                                              ? "bg-red-100 text-red-700 border-red-300"
+                                              : "bg-green-100 text-green-700 border-green-300"
+                                          }`}
+                                        >
+                                          {stockNum}
+                                        </span>
+                                      )}
+                                </div>
                               </td>
-                              <td
-                                className={`p-2 font-semibold ${
-                                  stockNum <= 5
-                                    ? "text-red-600"
-                                    : "text-green-700"
-                                }`}
-                              >
-                                {stockNum}
+                              <td className="p-3 text-right">
+                                {it.unitPrice?.toFixed(2) ?? "0.00"}
                               </td>
-                              <td className="p-2">
+                              <td className="p-3 text-center">
                                 <span
                                   className={`px-2 py-1 rounded-full text-xs ${
                                     stockNum <= 0
@@ -1126,15 +1234,19 @@ export default function ReportsModule() {
                                   {statusText}
                                 </span>
                               </td>
-                              <td className="p-2">
+                              <td className="p-3">
                                 {it.note || "—"}
                               </td>
-                              <td className="p-2">
-                                {new Date(
-                                  it.updatedAt ||
-                                    it.createdAt ||
-                                    ""
-                                ).toLocaleString("en-PH")}
+                              <td className="p-3 text-xs">
+                                {it.updatedAt
+                                  ? new Date(it.updatedAt).toLocaleString(
+                                      "en-PH"
+                                    )
+                                  : it.createdAt
+                                  ? new Date(it.createdAt).toLocaleString(
+                                      "en-PH"
+                                    )
+                                  : "—"}
                               </td>
                             </tr>
                           );

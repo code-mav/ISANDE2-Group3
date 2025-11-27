@@ -28,7 +28,7 @@ type InventoryItem = {
   _id?: string;
   sku: string;
   name: string;
-  stock: number;         
+  stock: number | Record<string, number>;
   warehouseCode: string[];           
   warehouseLoc?: string[];           
   unitPrice?: number;
@@ -292,33 +292,37 @@ const removeItem = (sku: string, warehouseCode: string) => {
       </div>
 
       {/* Table */}
-      <div className="bg-white rounded-2xl shadow p-4 mt-2 overflow-x-auto">
-        <table className="w-full text-left">
-          <thead className="border-b">
+      <div className="bg-white rounded-2xl shadow p-4 mt-2 overflow-x-auto border border-[#E0DCC7]">
+        <table className="w-full text-left bg-white">
+          <thead className="border-b bg-[#F9F8F4]">
             <tr className="text-[#0A400C]">
-              <th className="p-2">Req ID</th>
-              <th className="p-2">Date</th>
-              <th className="p-2">Requested By</th>
-              <th className="p-2">Supplier</th>
-              <th className="p-2">Warehouse</th>
-              <th className="p-2">Items</th>
-              <th className="p-2">Total Qty</th>
-              <th className="p-2">Status</th>
-              <th className="p-2 text-center">Actions</th>
+              <th className="p-3 text-left">Req ID</th>
+              <th className="p-3 text-left">Date</th>
+              <th className="p-3 text-left">Requested By</th>
+              <th className="p-3 text-left">Supplier</th>
+              <th className="p-3 text-left">Warehouse</th>
+              <th className="p-3 text-center">Items</th>
+              <th className="p-3 text-center">Total Qty</th>
+              <th className="p-3 text-center">Status</th>
+              <th className="p-3 text-center">Actions</th>
             </tr>
           </thead>
           <tbody>
             {processed.length ? processed.map((r, idx) => (
-              <tr key={r._id || r.requestId || idx} className="border-b hover:bg-gray-50">
-                <td className="p-2">{r.requestId || "—"}</td>
-                <td className="p-2">{r.date}</td>
-                <td className="p-2">{r.requester}</td>
-                <td className="p-2">{r.supplier}</td>
-                <td className="p-2">{r.warehouse || "—"}</td>
-                <td className="p-2">{r.items.length} item(s)</td>
-                <td className="p-2">{totalQty(r)}</td>
-                <td className={`p-2 ${getStatusColor(r.status)}`}>{r.status}</td>
-                <td className="p-2 flex gap-2 justify-center">
+              <tr key={r._id || r.requestId || idx} className="border-b hover:bg-gray-50 transition-colors">
+                <td className="p-3 font-mono text-sm">{r.requestId || "—"}</td>
+                <td className="p-3">{r.date}</td>
+                <td className="p-3">{r.requester}</td>
+                <td className="p-3">{r.supplier}</td>
+                <td className="p-3">{r.warehouse || "—"}</td>
+                <td className="p-3 text-center">{r.items.length} item(s)</td>
+                <td className="p-3 text-center font-semibold">{totalQty(r)}</td>
+                <td className="p-3 text-center">
+                  <span className={`inline-block px-2 py-1 rounded-md text-xs font-semibold ${r.status === 'Delivered' ? 'bg-green-100 text-green-700' : r.status === 'In Transit' ? 'bg-orange-100 text-orange-700' : r.status === 'Cancelled' ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'}`}>
+                    {r.status}
+                  </span>
+                </td>
+                <td className="p-3 flex gap-2 justify-center">
                   <button onClick={() => openEdit(r)} className="px-2 py-1 bg-[#E0DCC7] text-[#0A400C] rounded-md text-sm hover:bg-[#D6D1B1]">✏️</button>
                   <button onClick={() => deleteReq(r._id)} className="px-2 py-1 bg-red-600 text-white rounded-md text-sm hover:bg-red-700">🗑️</button>
                 </td>
@@ -381,10 +385,16 @@ const removeItem = (sku: string, warehouseCode: string) => {
               <label className="block text-sm font-medium text-[#0A400C]">Add Items (from inventory)</label>
               <div className="flex flex-wrap gap-2 mt-2 max-h-36 overflow-y-auto">
                 {inventory.map(it => {
-                  const stockArr = Array.isArray(it.stock) ? it.stock : [it.stock || 0];
+                  const stockArrNums =
+                    typeof it.stock === "object" && it.stock && !Array.isArray(it.stock)
+                      ? (Object.values(it.stock).map((v) => Number(v ?? 0)) as number[])
+                      : Array.isArray(it.stock)
+                      ? it.stock.map((v) => Number(v ?? 0))
+                      : [Number(it.stock ?? 0)];
+                  const total = stockArrNums.reduce((a, b) => a + b, 0);
                   return (
                     <button key={it._id} onClick={() => addItem(it)} className="px-3 py-1 border rounded bg-[#E0DCC7] hover:bg-[#D6D1B1]">
-                      {it.name} ({it.sku}) — {stockArr.reduce((a, b) => a + b, 0)} in {it.warehouseCode.join(", ")}
+                      {it.name} ({it.sku}) — {total} in {it.warehouseCode.join(", ")}
                     </button>
                   );
                 })}
@@ -399,6 +409,7 @@ const removeItem = (sku: string, warehouseCode: string) => {
                     <tr>
                       <th className="p-2">SKU</th>
                       <th className="p-2">Item Name</th>
+                      <th className="p-2">Warehouse</th>
                       <th className="p-2">Qty</th>
                       <th className="p-2">Available</th>
                       <th className="p-2">Remove</th>
@@ -409,6 +420,7 @@ const removeItem = (sku: string, warehouseCode: string) => {
   <tr key={`${it.sku}-${it.warehouseCode}`} className="border-t">
     <td className="p-2">{it.sku}</td>
     <td className="p-2">{it.name}</td>
+    <td className="p-2">{it.warehouseCode}</td>
     <td className="p-2">
       <input
         type="number"
@@ -421,14 +433,15 @@ const removeItem = (sku: string, warehouseCode: string) => {
       />
     </td>
     <td className="p-2">
-      {(() => {
-        const inv = findInv(it.sku);
-        if (!inv) return 0;
-        const stocks = Array.isArray(inv.stock)
-          ? inv.stock.map(n => Number(n || 0))
-          : [Number(inv.stock || 0)];
-        return stocks.reduce((a, b) => a + b, 0);
-      })()}
+                  {(() => {
+                    const inv = findInv(it.sku);
+                    if (!inv) return 0;
+                    const totalStocks =
+                      typeof inv.stock === "object" && inv.stock
+                        ? (Object.values(inv.stock).map((v) => Number(v ?? 0)) as number[]).reduce((a, b) => a + b, 0)
+                        : Number(inv.stock ?? 0);
+                    return totalStocks;
+                  })()}
     </td>
     <td className="p-2">
       <button onClick={() => removeItem(it.sku, it.warehouseCode)} className="px-2 py-1 text-red-600">

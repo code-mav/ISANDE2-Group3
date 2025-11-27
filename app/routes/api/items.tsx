@@ -1,6 +1,12 @@
 import clientPromise from "~/utils/mongo.server";
 import { ObjectId } from "mongodb";
 
+function ensureStockObject(stock: any) {
+  if (stock && typeof stock === "object") return stock;
+  // convert old numeric → store under default "VL1"
+  return { VL1: Number(stock ?? 0) };
+}
+
 /** Allowed action names for audit logging. */
 type ActionName = "create" | "update" | "delete";
 
@@ -20,18 +26,37 @@ async function logAction(
 ) {
   const logs = db.collection("AuditLogs");
 
-  const beforeStock =
-    beforeData && typeof beforeData.stock === "number"
-      ? Number(beforeData.stock)
-      : null;
-  const afterStock =
-    itemData && typeof itemData.stock === "number"
-      ? Number(itemData.stock)
-      : null;
-  const delta =
-    beforeStock !== null && afterStock !== null
-      ? afterStock - beforeStock
-      : null;
+  // Get before stock (support both number and object)
+  let beforeStock: number | Record<string, number> | null = null;
+  if (beforeData) {
+    if (typeof beforeData.stock === "number") {
+      beforeStock = beforeData.stock;
+    } else if (typeof beforeData.stock === "object") {
+      beforeStock = beforeData.stock;
+    }
+  }
+
+  // Get after stock (support both number and object)
+  let afterStock: number | Record<string, number> | null = null;
+  if (itemData) {
+    if (typeof itemData.stock === "number") {
+      afterStock = itemData.stock;
+    } else if (typeof itemData.stock === "object") {
+      afterStock = itemData.stock;
+    }
+  }
+
+  // Calculate delta (only for numeric comparison)
+  let delta: number | null = null;
+  if (beforeStock !== null && afterStock !== null) {
+    const beforeNum = typeof beforeStock === "number" 
+      ? beforeStock 
+      : (Object.values(beforeStock).map((v) => Number(v ?? 0)) as number[]).reduce((a, b) => a + b, 0);
+    const afterNum = typeof afterStock === "number"
+      ? afterStock
+      : (Object.values(afterStock).map((v) => Number(v ?? 0)) as number[]).reduce((a, b) => a + b, 0);
+    delta = afterNum - beforeNum;
+  }
 
   await logs.insertOne({
     ts: new Date(),
@@ -295,8 +320,10 @@ export async function action({ request }: { request: Request }) {
       warehouseCode: Array.isArray(body.warehouseCode)
         ? body.warehouseCode
         : [body.warehouseCode ?? ""],
-      stock: stockNum,
-      status: computeStatus(stockNum),
+      stock: ensureStockObject(body.stock),
+status: computeStatus(
+  (Object.values(ensureStockObject(body.stock)).map((v) => Number(v ?? 0)) as number[]).reduce((a, b) => a + b, 0)
+),
       note: body.note ?? "",
       unitPrice: Number(body.unitPrice ?? 0),
       createdAt: new Date(),
@@ -364,7 +391,7 @@ export async function action({ request }: { request: Request }) {
       );
     }
 
-    const stockNum = Number(body.stock ?? oldItem.stock) || 0;
+    const newStockObj = ensureStockObject(body.stock ?? oldItem.stock);
     const updatedItem: any = {
       sku: body.sku ?? oldItem.sku,
       name: body.name ?? oldItem.name,
@@ -375,8 +402,10 @@ export async function action({ request }: { request: Request }) {
       warehouseCode: Array.isArray(body.warehouseCode)
         ? body.warehouseCode
         : [body.warehouseCode ?? ""],
-      stock: stockNum,
-      status: computeStatus(stockNum),
+      stock: newStockObj,
+  status: computeStatus(
+    (Object.values(newStockObj).map((v) => Number(v ?? 0)) as number[]).reduce((a, b) => a + b, 0)
+  ),
       note: body.note ?? oldItem.note ?? "",
       unitPrice: Number(
         body.unitPrice ?? oldItem.unitPrice ?? 0

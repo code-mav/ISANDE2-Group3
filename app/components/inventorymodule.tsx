@@ -9,7 +9,7 @@ interface Item {
   category: string;
   warehouseLoc: string[];   // array
   warehouseCode: string[];  // array
-  stock: number;
+  stock: number | Record<string, number>;
   unitPrice?: number;
   status: string;
   note?: string;           
@@ -85,7 +85,13 @@ export default function InventoryModule() {
         .map((o: any) => o.value);
       setNewItem({ ...newItem, warehouseCode: selected });
     } else {
-      setNewItem({ ...newItem, [name]: value });
+      // coerce numeric fields
+      if (name === "stock" || name === "unitPrice") {
+        const num = Number(value);
+        setNewItem({ ...newItem, [name]: isNaN(num) ? 0 : num });
+      } else {
+        setNewItem({ ...newItem, [name]: value });
+      }
     }
   };
 
@@ -162,8 +168,13 @@ export default function InventoryModule() {
       return matchesSearch && matchesWarehouse && matchesWarehouseCode && matchesCategory;
     })
     .sort((a, b) => {
+      const totalStock = (s: number | Record<string, number> | undefined) => {
+        if (s === undefined || s === null) return 0;
+        if (typeof s === "number") return Number(s || 0);
+        return (Object.values(s).map((v) => Number(v ?? 0)) as number[]).reduce((x, y) => x + y, 0);
+      };
       if (sortBy === "name") return a.name.localeCompare(b.name);
-      if (sortBy === "stock") return b.stock - a.stock;
+      if (sortBy === "stock") return totalStock(a.stock) - totalStock(b.stock);
       if (sortBy === "newest") {
         const dateA = new Date(a.createdAt || 0).getTime();
         const dateB = new Date(b.createdAt || 0).getTime();
@@ -178,14 +189,21 @@ export default function InventoryModule() {
     currentPage * itemsPerPage
   );
 
-  // Status badge
-  const getStatusBadge = (stock: number) => {
+  // Helper: compute total across warehouses
+  const totalStock = (s: number | Record<string, number> | undefined) => {
+    if (s === undefined || s === null) return 0;
+    if (typeof s === "number") return Number(s || 0);
+    return (Object.values(s).map((v) => Number(v ?? 0)) as number[]).reduce((a, b) => a + b, 0);
+  };
+
+  const getStatusBadge = (stock: number | Record<string, number> | undefined) => {
+    const t = totalStock(stock);
     let label = "Available";
     let color = "bg-green-100 text-green-700";
-    if (stock <= 0) {
+    if (t <= 0) {
       label = "Out of Stock";
       color = "bg-red-100 text-red-700";
-    } else if (stock <= 5) {
+    } else if (t <= 5) {
       label = "Low Stock";
       color = "bg-orange-100 text-orange-700";
     }
@@ -282,18 +300,17 @@ export default function InventoryModule() {
 <div className="mt-6 bg-white rounded-2xl shadow p-4 overflow-x-auto border border-[#E0DCC7]">
   <table className="w-full text-left bg-white">
     <thead className="border-b bg-[#F9F8F4]">
-      <tr className="text-[#0A400C]">
-        <th className="p-2">#</th>
-        <th className="p-2">SKU</th>
-        <th className="p-2">Item Name</th>
-        <th className="p-2">Category</th>
-        <th className="p-2">Warehouse</th>
-        <th className="p-2">Code</th>
-        <th className="p-2">Stock</th>
-        <th className="p-2">Unit Price (₱)</th>
-        <th className="p-2">Status</th>
-        <th className="p-2">Note</th>
-        <th className="p-2 text-center">Actions</th>
+        <tr className="text-[#0A400C]">
+        <th className="p-3 text-left">#</th>
+        <th className="p-3 text-left">SKU</th>
+        <th className="p-3 text-left">Item Name</th>
+        <th className="p-3 text-left">Category</th>
+        <th className="p-3 text-left">Warehouse</th>
+        <th className="p-3 text-left">Stock</th>
+        <th className="p-3 text-right">Unit Price (₱)</th>
+        <th className="p-3 text-center">Status</th>
+        <th className="p-3">Note</th>
+        <th className="p-3 text-center">Actions</th>
       </tr>
     </thead>
 
@@ -309,16 +326,27 @@ export default function InventoryModule() {
             <td className="p-2">{item.name}</td>
             <td className="p-2">{item.category}</td>
             <td className="p-2">{formatArrayField(item.warehouseLoc)}</td>
-            <td className="p-2">{formatArrayField(item.warehouseCode)}</td>
-            <td
-              className={`p-2 font-semibold ${
-                item.stock <= 5 ? "text-red-600" : "text-green-700"
-              }`}
-            >
-              {item.stock}
+            <td className="p-2 align-top">
+              <div className="flex flex-wrap gap-2">
+                {typeof item.stock === "object"
+                  ? Object.entries(item.stock).map(([wh, q]) => (
+                      <span
+                        key={wh}
+                        className={`inline-block px-2 py-1 text-xs rounded-md border ${Number(q) <= 5 ? 'bg-red-50 border-red-200 text-red-700' : 'bg-green-50 border-green-200 text-green-700'}`}
+                        title={`${wh}: ${q}`}
+                      >
+                        {wh}: {Number(q)}
+                      </span>
+                    ))
+                  : (
+                    <span className={`inline-block px-2 py-1 text-xs rounded-md ${totalStock(item.stock) <= 5 ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700'}`}>
+                      {Number(item.stock)}
+                    </span>
+                  )}
+              </div>
             </td>
-            <td className="p-2">{item.unitPrice?.toFixed(2) ?? "—"}</td>
-            <td className="p-2">{getStatusBadge(item.stock)}</td>
+            <td className="p-2 text-right">{item.unitPrice?.toFixed(2) ?? "—"}</td>
+            <td className="p-2 text-center">{getStatusBadge(item.stock)}</td>
 
             {/* Note column */}
             <td
@@ -347,7 +375,7 @@ export default function InventoryModule() {
         ))
       ) : (
         <tr>
-          <td colSpan={11} className="p-4 text-center text-[#819067] italic bg-white">
+          <td colSpan={10} className="p-4 text-center text-[#819067] italic bg-white">
             No items found matching your search or filter criteria.
           </td>
         </tr>
@@ -476,14 +504,45 @@ export default function InventoryModule() {
 
               <div className="col-span-2">
                 <label className="block text-sm font-medium text-[#0A400C]">Current Stock</label>
-                <input
-                  type="number"
-                  name="stock"
-                  value={newItem.stock}
-                  onChange={handleChange}
-                  className="w-full p-2 border rounded-lg mt-1"
-                  min="0"
-                />
+                {Array.isArray(newItem.warehouseCode) && newItem.warehouseCode.length > 0 ? (
+                  <div className="grid grid-cols-2 gap-2 mt-2">
+                    {newItem.warehouseCode.map((code) => {
+                      const val =
+                        typeof newItem.stock === "object"
+                          ? Number((newItem.stock as Record<string, number>)[code] ?? 0)
+                          : Number(newItem.stock ?? 0);
+                      return (
+                        <div key={code} className="flex items-center gap-2">
+                          <span className="w-20">{code}</span>
+                          <input
+                            type="number"
+                            min={0}
+                            value={val}
+                            onChange={(e) => {
+                              const n = Number(e.target.value || 0);
+                              const stockObj: Record<string, number> =
+                                typeof newItem.stock === "object" && newItem.stock
+                                  ? { ...(newItem.stock as Record<string, number>) }
+                                  : {};
+                              stockObj[code] = isNaN(n) ? 0 : n;
+                              setNewItem({ ...newItem, stock: stockObj });
+                            }}
+                            className="w-full p-2 border rounded-lg mt-1"
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <input
+                    type="number"
+                    name="stock"
+                    value={typeof newItem.stock === "number" ? newItem.stock : 0}
+                    onChange={handleChange}
+                    className="w-full p-2 border rounded-lg mt-1"
+                    min="0"
+                  />
+                )}
               </div>
 
               <div className="col-span-2">

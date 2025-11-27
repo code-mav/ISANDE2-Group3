@@ -1,6 +1,16 @@
 import clientPromise from "~/utils/mongo.server";
 import { ObjectId } from "mongodb";
 
+function addToWarehouse(stockObj: any, warehouse: string, qty: number) {
+  stockObj[warehouse] = (stockObj[warehouse] ?? 0) + qty;
+  return stockObj;
+}
+
+function subtractFromWarehouse(stockObj: any, warehouse: string, qty: number) {
+  stockObj[warehouse] = Math.max(0, (stockObj[warehouse] ?? 0) - qty);
+  return stockObj;
+}
+
 type InventoryItemUpdate = {
   sku: string;
   warehouseCode: string;
@@ -66,19 +76,20 @@ async function applyInventory(
       ? [inv.warehouseCode]
       : [];
 
-    // stock before
-    let beforeStock =
-      typeof inv.stock === "number"
-        ? inv.stock
-        : Array.isArray(inv.stock)
-        ? inv.stock.reduce(
-            (a: number, b: any) => a + Number(b ?? 0),
-            0
-          )
-        : 0;
+    // Capture before stock (object if exists, else numeric)
+    let beforeStock: number | Record<string, number> | null = null;
+    if (inv.stock) {
+      beforeStock = typeof inv.stock === "object" ? inv.stock : inv.stock;
+    }
 
     const qty = Number(it.qty);
-    const totalStock = beforeStock + qty;
+    let stockObj = typeof inv.stock === "object"
+      ? { ...inv.stock }
+      : { VL1: Number(inv.stock ?? 0) };
+
+    stockObj = addToWarehouse(stockObj, it.warehouseCode, qty);
+
+    const totalStock = (Object.values(stockObj).map((v) => Number(v ?? 0)) as number[]).reduce((a, b) => a + b, 0);
 
     if (!warehouseCodes.includes(it.warehouseCode)) {
       warehouseCodes.push(it.warehouseCode);
@@ -96,12 +107,20 @@ async function applyInventory(
       {
         $set: {
           warehouseCode: warehouseCodes,
-          stock: totalStock,
+          stock: stockObj,
           status,
           updatedAt: new Date(),
         },
       }
     );
+
+    // Calculate numeric delta for display
+    const beforeNum = beforeStock !== null
+      ? typeof beforeStock === "number"
+        ? beforeStock
+        : (Object.values(beforeStock).map((v: any) => Number(v ?? 0)) as number[]).reduce((a, b) => a + b, 0)
+      : null;
+    const numericDelta = beforeNum !== null ? totalStock - beforeNum : qty;
 
     await logs.insertOne({
       ts: new Date(),
@@ -109,8 +128,8 @@ async function applyInventory(
       sku: it.sku,
       name: inv.name ?? null,
       stockBefore: beforeStock,
-      stockAfter: totalStock,
-      delta: qty,
+      stockAfter: stockObj,
+      delta: numericDelta,
       note,
       orderId: null,
       stockRequestId,

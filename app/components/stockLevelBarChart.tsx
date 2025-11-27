@@ -7,8 +7,14 @@ interface Item {
   category: string;
   warehouseLoc: string;
   warehouseCode: string;
-  stock: number;
+  stock: number | Record<string, number>;
   status: string;
+}
+
+// Helper to compute total stock across all warehouses
+function totalStock(stockValue: number | Record<string, number>): number {
+  if (typeof stockValue === "number") return stockValue;
+  return (Object.values(stockValue).map((v) => Number(v ?? 0)) as number[]).reduce((a, b) => a + b, 0);
 }
 
 interface Props {
@@ -26,7 +32,7 @@ export default function StockLevelBarChart({ items }: Props) {
 
   const chartData = filteredItems.map((item) => ({
     name: item.name,
-    stock: item.stock,
+    stock: totalStock(item.stock),
   }));
 
   return (
@@ -60,7 +66,7 @@ export default function StockLevelBarChart({ items }: Props) {
               {chartData.map((entry, index) => (
                 <Cell
                   key={`cell-${index}`}
-                  fill={entry.stock <= 5 ? "#C0392B" : "#819067"}
+                  fill={entry.stock <= 5 ? "#DC2626" : "#0A400C"}
                 />
               ))}
             </Bar>

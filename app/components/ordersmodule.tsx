@@ -6,6 +6,7 @@ interface OrderItem {
   unitPrice: number;
   quantity: number;
   subtotal: number;
+  warehouseCode?: string;
 }
 
 interface Order {
@@ -21,7 +22,7 @@ interface InventoryItem {
   _id: string;
   sku: string;
   name: string;
-  stock: number;
+  stock: number | Record<string, number>;
   unitPrice?: number;
 }
 
@@ -85,11 +86,17 @@ export default function OrdersModule() {
   };
 
   // Add item to order
-  const addItemToOrder = (item: InventoryItem) => {
-    if (newOrder.items.find((i) => i.sku === item.sku)) return;
+  // Add item to order — optionally specify warehouseCode to take from
+  const addItemToOrder = (item: InventoryItem, warehouseCode?: string) => {
+    const key = (sku: string, wh?: string) => `${sku}::${wh ?? ""}`;
+    if (newOrder.items.find((i) => key(i.sku, i.warehouseCode) === key(item.sku, warehouseCode))) return;
 
-    // Check if stock is zero
-    if ((item.stock || 0) <= 0) {
+    const itemAvailable =
+      typeof item.stock === "object" && item.stock
+        ? (Object.values(item.stock).map((v) => Number(v ?? 0)) as number[]).reduce((a, b) => a + b, 0)
+        : Number(item.stock ?? 0);
+
+    if (itemAvailable <= 0) {
       alert(`Cannot add ${item.name}: Out of stock`);
       return;
     }
@@ -102,6 +109,7 @@ export default function OrdersModule() {
         unitPrice: item.unitPrice ?? 0,
         quantity: 1,
         subtotal: item.unitPrice ?? 0,
+        warehouseCode: warehouseCode,
       },
     ];
     const total = updatedItems.reduce((sum, i) => sum + i.subtotal, 0);
@@ -109,9 +117,13 @@ export default function OrdersModule() {
   };
 
   // Update item quantity
-  const updateItemQuantity = (sku: string, quantity: number) => {
+  const updateItemQuantity = (sku: string, quantity: number, warehouseCode?: string) => {
     const inventoryItem = inventory.find((i) => i.sku === sku);
-    const available = inventoryItem?.stock ?? 0;
+    const available =
+      typeof inventoryItem?.stock === "object" && inventoryItem?.stock
+        ? (Object.values(inventoryItem.stock).map((v) => Number(v ?? 0)) as number[]).reduce((a, b) => a + b, 0)
+        : Number(inventoryItem?.stock ?? 0);
+
 
     if (quantity > available) {
       alert(`Cannot set quantity beyond available stock (${available})`);
@@ -119,7 +131,7 @@ export default function OrdersModule() {
     }
 
     const updatedItems = newOrder.items.map((item) =>
-      item.sku === sku
+      item.sku === sku && item.warehouseCode === warehouseCode
         ? { ...item, quantity, subtotal: item.unitPrice * quantity }
         : item
     );
@@ -128,8 +140,10 @@ export default function OrdersModule() {
   };
 
   // Remove item from order
-  const removeItem = (sku: string) => {
-    const updatedItems = newOrder.items.filter((i) => i.sku !== sku);
+  const removeItem = (sku: string, warehouseCode?: string) => {
+    const updatedItems = newOrder.items.filter(
+      (i) => !(i.sku === sku && (warehouseCode === undefined || i.warehouseCode === warehouseCode))
+    );
     const total = updatedItems.reduce((sum, i) => sum + i.subtotal, 0);
     setNewOrder({ ...newOrder, items: updatedItems, totalAmount: total });
   };
@@ -279,18 +293,18 @@ export default function OrdersModule() {
       </div>
 
       {/* Orders Table */}
-      <div className="bg-white rounded-2xl shadow p-4 mt-2 overflow-x-auto">
-        <table className="w-full text-left">
-          <thead className="border-b">
+      <div className="bg-white rounded-2xl shadow p-4 mt-2 overflow-x-auto border border-[#E0DCC7]">
+        <table className="w-full text-left bg-white">
+          <thead className="border-b bg-[#F9F8F4]">
             <tr className="text-[#0A400C]">
-              <th className="p-2">#</th>
-              <th className="p-2">Ref ID</th>
-              <th className="p-2">Customer</th>
-              <th className="p-2">Date</th>
-              <th className="p-2">Items</th>
-              <th className="p-2">Total (₱)</th>
-              <th className="p-2">Status</th>
-              <th className="p-2 text-center">Actions</th>
+              <th className="p-3 text-left">#</th>
+              <th className="p-3 text-left">Ref ID</th>
+              <th className="p-3 text-left">Customer</th>
+              <th className="p-3 text-left">Date</th>
+              <th className="p-3 text-left">Items</th>
+              <th className="p-3 text-right">Total (₱)</th>
+              <th className="p-3 text-center">Status</th>
+              <th className="p-3 text-center">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -298,23 +312,24 @@ export default function OrdersModule() {
               filteredOrders.map((o, index) => (
                 <tr
                   key={o._id || index}
-                  className="border-b hover:bg-gray-50"
+                  className="border-b hover:bg-gray-50 transition-colors"
                 >
-                  <td className="p-2">{index + 1}</td>
-                  {/* Ref ID = same Mongo _id used in Reports logs */}
-                  <td className="p-2 text-xs text-gray-500">
-                    {o._id || "—"}
+                  <td className="p-3">{index + 1}</td>
+                  <td className="p-3 text-xs text-gray-500 font-mono">
+                    {o._id ? o._id.substring(0, 8) + '...' : "—"}
                   </td>
-                  <td className="p-2">{o.customerName}</td>
-                  <td className="p-2">{o.orderDate}</td>
-                  <td className="p-2">{o.items.length} item(s)</td>
-                  <td className="p-2 font-semibold">
+                  <td className="p-3">{o.customerName}</td>
+                  <td className="p-3">{o.orderDate}</td>
+                  <td className="p-3">{o.items.length} item(s)</td>
+                  <td className="p-3 text-right font-semibold">
                     ₱{o.totalAmount.toFixed(2)}
                   </td>
-                  <td className={`p-2 ${getStatusColor(o.status)}`}>
-                    {o.status}
+                  <td className="p-3 text-center">
+                    <span className={`inline-block px-2 py-1 rounded-md text-xs font-semibold ${o.status === 'Completed' ? 'bg-green-100 text-green-700' : o.status === 'Processing' ? 'bg-yellow-100 text-yellow-700' : o.status === 'Cancelled' ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-700'}`}>
+                      {o.status}
+                    </span>
                   </td>
-                  <td className="p-2 flex gap-2 justify-center">
+                  <td className="p-3 flex gap-2 justify-center">
                     <button
                       onClick={() => openEditModal(o)}
                       className="px-2 py-1 bg-[#E0DCC7] text-[#0A400C] rounded-md text-sm hover:bg-[#D6D1B1]"
@@ -394,15 +409,29 @@ export default function OrdersModule() {
                 Select Items
               </label>
               <div className="flex flex-wrap gap-2 mt-2 max-h-32 overflow-y-auto">
-                {inventory.map((item) => (
-                  <button
-                    key={item._id}
-                    onClick={() => addItemToOrder(item)}
-                    className="px-3 py-1 border rounded-lg bg-[#E0DCC7] hover:bg-[#D6D1B1]"
-                  >
-                    {item.name} (₱{item.unitPrice?.toFixed(2) ?? 0})
-                  </button>
-                ))}
+                {inventory.map((item) => {
+                  // if stock is an object map, show per-warehouse buttons
+                  if (typeof item.stock === "object" && item.stock) {
+                    return Object.entries(item.stock).map(([wh, v]) => (
+                      <button
+                        key={`${item._id}-${wh}`}
+                        onClick={() => addItemToOrder(item, wh)}
+                        className="px-3 py-1 border rounded-lg bg-[#E0DCC7] hover:bg-[#D6D1B1]"
+                      >
+                        {item.name} ({wh}: {Number(v ?? 0)})
+                      </button>
+                    ));
+                  }
+                  return (
+                    <button
+                      key={item._id}
+                      onClick={() => addItemToOrder(item)}
+                      className="px-3 py-1 border rounded-lg bg-[#E0DCC7] hover:bg-[#D6D1B1]"
+                    >
+                      {item.name} (₱{item.unitPrice?.toFixed(2) ?? 0})
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
@@ -414,6 +443,7 @@ export default function OrdersModule() {
                     <tr>
                       <th className="p-2">SKU</th>
                       <th className="p-2">Item Name</th>
+                      <th className="p-2">Warehouse</th>
                       <th className="p-2">Qty</th>
                       <th className="p-2">Unit Price</th>
                       <th className="p-2">Subtotal</th>
@@ -422,9 +452,10 @@ export default function OrdersModule() {
                   </thead>
                   <tbody>
                     {newOrder.items.map((item) => (
-                      <tr key={item.sku} className="border-t">
+                      <tr key={`${item.sku}-${item.warehouseCode ?? ""}`} className="border-t">
                         <td className="p-2">{item.sku}</td>
                         <td className="p-2">{item.name}</td>
+                        <td className="p-2">{item.warehouseCode ?? "—"}</td>
                         <td className="p-2">
                           <input
                             type="number"
@@ -433,7 +464,8 @@ export default function OrdersModule() {
                             onChange={(e) =>
                               updateItemQuantity(
                                 item.sku,
-                                Number(e.target.value)
+                                Number(e.target.value),
+                                item.warehouseCode
                               )
                             }
                             className="w-16 border rounded p-1 text-center"
@@ -447,7 +479,7 @@ export default function OrdersModule() {
                         </td>
                         <td className="p-2">
                           <button
-                            onClick={() => removeItem(item.sku)}
+                            onClick={() => removeItem(item.sku, item.warehouseCode)}
                             className="text-red-600 hover:underline text-sm"
                           >
                             Remove
