@@ -29,8 +29,8 @@ type InventoryItem = {
   sku: string;
   name: string;
   stock: number | Record<string, number>;
-  warehouseCode: string[];           
-  warehouseLoc?: string[];           
+  warehouseCode: string[];
+  warehouseLoc?: string[];
   unitPrice?: number;
   category?: string;
   status?: string;
@@ -68,13 +68,12 @@ export default function StockRequestsModule() {
   const [form, setForm] = useState<StockRequest>(emptyForm());
 
   const fetchRequests = async () => {
-  const res = await fetch("/api/stockrequests");
-  if (!res.ok) return [];
-  const data = await res.json();
-  setRequests(data || []);
-  return data;
-};
-
+    const res = await fetch("/api/stockrequests");
+    if (!res.ok) return [];
+    const data = await res.json();
+    setRequests(data || []);
+    return data;
+  };
 
   const fetchInventory = async () => {
     const res = await fetch("/api/items");
@@ -100,125 +99,150 @@ export default function StockRequestsModule() {
   }, []);
 
   const findInv = (sku?: string) => inventory.find((i) => i.sku === sku);
-  const totalQty = (r: StockRequest) => r.items.reduce((s, it) => s + (it.qty || 0), 0);
+  const totalQty = (r: StockRequest) =>
+    r.items.reduce((s, it) => s + (it.qty || 0), 0);
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case "Cancelled": return "text-red-600 font-semibold";
-      case "Delivered": return "text-green-600 font-semibold";
-      case "In Transit": return "text-orange-600 font-semibold";
-      default: return "text-yellow-700 font-semibold";
+      case "Cancelled":
+        return "text-red-600 font-semibold";
+      case "Delivered":
+        return "text-green-600 font-semibold";
+      case "In Transit":
+        return "text-orange-600 font-semibold";
+      default:
+        return "text-yellow-700 font-semibold";
     }
   };
 
-  const openCreate = () => { setIsEditMode(false); setSelectedId(null); setForm(emptyForm()); setIsModalOpen(true); };
+  const openCreate = () => {
+    setIsEditMode(false);
+    setSelectedId(null);
+    setForm(emptyForm());
+    setIsModalOpen(true);
+  };
+
   const openEdit = (r: StockRequest) => {
     setIsEditMode(true);
     setSelectedId(r._id || r.requestId || null);
     setForm({
       ...r,
-      supplierOther: r.supplier && !SUPPLIERS.includes(r.supplier) ? r.supplier : r.supplierOther || "",
+      supplierOther:
+        r.supplier && !SUPPLIERS.includes(r.supplier)
+          ? r.supplier
+          : r.supplierOther || "",
     });
     setIsModalOpen(true);
   };
 
-  // Add item from inventory
-const addItem = (it: InventoryItem) => {
-  if (!form.warehouse) return alert("Select a warehouse first");
+  // Add item from inventory — ONLY used in create mode
+  const addItem = (it: InventoryItem) => {
+    if (!form.warehouse) return alert("Select a warehouse first");
 
-  const existingIndex = form.items.findIndex(
-    (i) => i.sku === it.sku && i.warehouseCode === form.warehouse
-  );
+    const existingIndex = form.items.findIndex(
+      (i) => i.sku === it.sku && i.warehouseCode === form.warehouse
+    );
 
-  if (existingIndex !== -1) {
-    const updatedItems = [...form.items];
-    updatedItems[existingIndex].qty += 1;
-    setForm({ ...form, items: updatedItems });
-  } else {
-    setForm({
-      ...form,
-      items: [
-        ...form.items,
-        { sku: it.sku, name: it.name, qty: 1, warehouseCode: form.warehouse },
-      ],
-    });
-  }
-};
-
-// Update qty for specific SKU + warehouse
-const updateQty = (sku: string, warehouseCode: string, qty: number) => {
-  if (qty < 1) return;
-  setForm({
-    ...form,
-    items: form.items.map((it) =>
-      it.sku === sku && it.warehouseCode === warehouseCode ? { ...it, qty } : it
-    ),
-  });
-};
-
-// Remove SKU + warehouse
-const removeItem = (sku: string, warehouseCode: string) => {
-  setForm({
-    ...form,
-    items: form.items.filter(
-      (it) => !(it.sku === sku && it.warehouseCode === warehouseCode)
-    ),
-  });
-};
-
-  const save = async () => {
-  if (!form.requester?.trim()) return alert("Please enter requester.");
-  if (!form.items.length) return alert("Add at least one item.");
-  if (!form.warehouse?.trim()) return alert("Select warehouse.");
-  for (const it of form.items) {
-    if (!it.qty || it.qty < 1) return alert("Each item must have qty >= 1.");
-  }
-
-  // --- MERGE DUPLICATES BY SKU + WAREHOUSE ---
-  const mergedItems: ReqItem[] = [];
-  const map: Record<string, ReqItem> = {};
-  form.items.forEach(it => {
-    const key = `${it.sku}::${it.warehouseCode}`;
-    if (map[key]) {
-      map[key].qty += it.qty; 
+    if (existingIndex !== -1) {
+      const updatedItems = [...form.items];
+      updatedItems[existingIndex].qty += 1;
+      setForm({ ...form, items: updatedItems });
     } else {
-      map[key] = { ...it };
+      setForm({
+        ...form,
+        items: [
+          ...form.items,
+          { sku: it.sku, name: it.name, qty: 1, warehouseCode: form.warehouse },
+        ],
+      });
     }
-  });
-  Object.values(map).forEach(it => mergedItems.push(it));
-
-  const payload: any = {
-    ...form,
-    items: mergedItems,
-    deliveredAt: form.status === "Delivered" ? new Date().toISOString() : form.deliveredAt,
   };
 
-  if (payload.supplier === "Other" && payload.supplierOther) {
-    payload.supplier = payload.supplierOther;
-    delete payload.supplierOther;
-  }
+  // Update qty for specific SKU + warehouse — ONLY used in create mode
+  const updateQty = (sku: string, warehouseCode: string, qty: number) => {
+    if (qty < 1) return;
+    setForm({
+      ...form,
+      items: form.items.map((it) =>
+        it.sku === sku && it.warehouseCode === warehouseCode
+          ? { ...it, qty }
+          : it
+      ),
+    });
+  };
 
-  const method = isEditMode ? "PUT" : "POST";
-  const url = isEditMode ? `/api/stockrequests?id=${selectedId}` : "/api/stockrequests";
+  // Remove SKU + warehouse — ONLY used in create mode
+  const removeItem = (sku: string, warehouseCode: string) => {
+    setForm({
+      ...form,
+      items: form.items.filter(
+        (it) => !(it.sku === sku && it.warehouseCode === warehouseCode)
+      ),
+    });
+  };
 
-  const res = await fetch(url, {
-    method,
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
+  const save = async () => {
+    if (!form.requester?.trim()) return alert("Please enter requester.");
+    if (!form.items.length) return alert("Add at least one item.");
+    if (!form.warehouse?.trim()) return alert("Select warehouse.");
+    for (const it of form.items) {
+      if (!it.qty || it.qty < 1) return alert("Each item must have qty >= 1.");
+    }
 
-  const data = await res.json();
-  if (!res.ok) return alert(data?.message || "Failed to save request");
+    // --- MERGE DUPLICATES BY SKU + WAREHOUSE ---
+    const mergedItems: ReqItem[] = [];
+    const map: Record<string, ReqItem> = {};
+    form.items.forEach((it) => {
+      const key = `${it.sku}::${it.warehouseCode}`;
+      if (map[key]) {
+        map[key].qty += it.qty;
+      } else {
+        map[key] = { ...it };
+      }
+    });
+    Object.values(map).forEach((it) => mergedItems.push(it));
 
-  await fetchRequests();
-  await fetchInventory();
-  setIsModalOpen(false);
-};
+    const payload: any = {
+      ...form,
+      items: mergedItems,
+      deliveredAt:
+        form.status === "Delivered"
+          ? new Date().toISOString()
+          : form.deliveredAt,
+    };
 
+    if (payload.supplier === "Other" && payload.supplierOther) {
+      payload.supplier = payload.supplierOther;
+      delete payload.supplierOther;
+    }
+
+    const method = isEditMode ? "PUT" : "POST";
+    const url = isEditMode
+      ? `/api/stockrequests?id=${selectedId}`
+      : "/api/stockrequests";
+
+    const res = await fetch(url, {
+      method,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    const data = await res.json();
+    if (!res.ok) return alert(data?.message || "Failed to save request");
+
+    await fetchRequests();
+    await fetchInventory();
+    setIsModalOpen(false);
+  };
 
   const deleteReq = async (id?: string) => {
     if (!id) return;
-    if (!confirm("Delete this request? (Delivered additions will NOT be reverted)")) return;
+    if (
+      !confirm(
+        "Delete this request? (Delivered additions will NOT be reverted)"
+      )
+    )
+      return;
     const res = await fetch(`/api/stockrequests?id=${id}`, { method: "DELETE" });
     const data = await res.json();
     if (!res.ok) {
@@ -232,7 +256,8 @@ const removeItem = (sku: string, warehouseCode: string) => {
 
   const processed = useMemo(() => {
     let out = [...requests];
-    if (filterStatus !== "All") out = out.filter((r) => r.status === filterStatus);
+    if (filterStatus !== "All")
+      out = out.filter((r) => r.status === filterStatus);
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       out = out.filter(
@@ -242,8 +267,12 @@ const removeItem = (sku: string, warehouseCode: string) => {
           (r.supplier || "").toLowerCase().includes(q)
       );
     }
-    if (sortBy === "newest") out.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
-    if (sortBy === "supplier") out.sort((a, b) => (a.supplier || "").localeCompare(b.supplier || ""));
+    if (sortBy === "newest")
+      out.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+    if (sortBy === "supplier")
+      out.sort((a, b) =>
+        (a.supplier || "").localeCompare(b.supplier || "")
+      );
     if (sortBy === "qty") out.sort((a, b) => totalQty(b) - totalQty(a));
     return out;
   }, [requests, filterStatus, searchQuery, sortBy]);
@@ -253,8 +282,13 @@ const removeItem = (sku: string, warehouseCode: string) => {
       {/* Header */}
       <div className="text-center mb-6">
         <h1 className="text-3xl font-bold text-[#0A400C]">Stock Requests</h1>
-        <p className="mt-2 text-[#819067] text-lg">Create and manage incoming stock requests.</p>
-        <button onClick={openCreate} className="mt-4 px-6 py-2 bg-[#0A400C] text-white rounded-lg hover:bg-green-900 transition">
+        <p className="mt-2 text-[#819067] text-lg">
+          Create and manage incoming stock requests.
+        </p>
+        <button
+          onClick={openCreate}
+          className="mt-4 px-6 py-2 bg-[#0A400C] text-white rounded-lg hover:bg-green-900 transition"
+        >
           + Create New Request
         </button>
       </div>
@@ -273,7 +307,11 @@ const removeItem = (sku: string, warehouseCode: string) => {
 
         <div className="flex gap-2 items-center">
           <span className="text-[#0A400C] font-medium">Sort by:</span>
-          <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} className="p-2 border rounded-lg">
+          <select
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value)}
+            className="p-2 border rounded-lg"
+          >
             <option value="newest">Newest</option>
             <option value="supplier">Supplier</option>
             <option value="qty">Total Qty</option>
@@ -282,13 +320,30 @@ const removeItem = (sku: string, warehouseCode: string) => {
 
         <div className="flex gap-2 items-center">
           <span className="text-[#0A400C] font-medium">Status:</span>
-          <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className="p-2 border rounded-lg">
+          <select
+            value={filterStatus}
+            onChange={(e) => setFilterStatus(e.target.value)}
+            className="p-2 border rounded-lg"
+          >
             <option value="All">All</option>
-            {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+            {STATUSES.map((s) => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
           </select>
         </div>
 
-        <button onClick={() => { setSearchQuery(""); setFilterStatus("All"); setSortBy("newest"); }} className="px-3 py-2 bg-[#E0DCC7] text-[#0A400C] rounded-lg hover:bg-[#D6D1B1]">Reset</button>
+        <button
+          onClick={() => {
+            setSearchQuery("");
+            setFilterStatus("All");
+            setSortBy("newest");
+          }}
+          className="px-3 py-2 bg-[#E0DCC7] text-[#0A400C] rounded-lg hover:bg-[#D6D1B1]"
+        >
+          Reset
+        </button>
       </div>
 
       {/* Table */}
@@ -308,27 +363,65 @@ const removeItem = (sku: string, warehouseCode: string) => {
             </tr>
           </thead>
           <tbody>
-            {processed.length ? processed.map((r, idx) => (
-              <tr key={r._id || r.requestId || idx} className="border-b hover:bg-gray-50 transition-colors">
-                <td className="p-3 font-mono text-sm">{r.requestId || "—"}</td>
-                <td className="p-3">{r.date}</td>
-                <td className="p-3">{r.requester}</td>
-                <td className="p-3">{r.supplier}</td>
-                <td className="p-3">{r.warehouse || "—"}</td>
-                <td className="p-3 text-center">{r.items.length} item(s)</td>
-                <td className="p-3 text-center font-semibold">{totalQty(r)}</td>
-                <td className="p-3 text-center">
-                  <span className={`inline-block px-2 py-1 rounded-md text-xs font-semibold ${r.status === 'Delivered' ? 'bg-green-100 text-green-700' : r.status === 'In Transit' ? 'bg-orange-100 text-orange-700' : r.status === 'Cancelled' ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'}`}>
-                    {r.status}
-                  </span>
-                </td>
-                <td className="p-3 flex gap-2 justify-center">
-                  <button onClick={() => openEdit(r)} className="px-2 py-1 bg-[#E0DCC7] text-[#0A400C] rounded-md text-sm hover:bg-[#D6D1B1]">✏️</button>
-                  <button onClick={() => deleteReq(r._id)} className="px-2 py-1 bg-red-600 text-white rounded-md text-sm hover:bg-red-700">🗑️</button>
+            {processed.length ? (
+              processed.map((r, idx) => (
+                <tr
+                  key={r._id || r.requestId || idx}
+                  className="border-b hover:bg-gray-50 transition-colors"
+                >
+                  <td className="p-3 font-mono text-sm">
+                    {r.requestId || "—"}
+                  </td>
+                  <td className="p-3">{r.date}</td>
+                  <td className="p-3">{r.requester}</td>
+                  <td className="p-3">{r.supplier}</td>
+                  <td className="p-3">{r.warehouse || "—"}</td>
+                  <td className="p-3 text-center">
+                    {r.items.length} item(s)
+                  </td>
+                  <td className="p-3 text-center font-semibold">
+                    {totalQty(r)}
+                  </td>
+                  <td className="p-3 text-center">
+                    <span
+                      className={`inline-block px-2 py-1 rounded-md text-xs font-semibold ${
+                        r.status === "Delivered"
+                          ? "bg-green-100 text-green-700"
+                          : r.status === "In Transit"
+                          ? "bg-orange-100 text-orange-700"
+                          : r.status === "Cancelled"
+                          ? "bg-red-100 text-red-700"
+                          : "bg-yellow-100 text-yellow-700"
+                      }`}
+                    >
+                      {r.status}
+                    </span>
+                  </td>
+                  <td className="p-3 flex gap-2 justify-center">
+                    <button
+                      onClick={() => openEdit(r)}
+                      className="px-2 py-1 bg-[#E0DCC7] text-[#0A400C] rounded-md text-sm hover:bg-[#D6D1B1]"
+                    >
+                      ✏️
+                    </button>
+                    <button
+                      onClick={() => deleteReq(r._id)}
+                      className="px-2 py-1 bg-red-600 text-white rounded-md text-sm hover:bg-red-700"
+                    >
+                      🗑️
+                    </button>
+                  </td>
+                </tr>
+              ))
+            ) : (
+              <tr>
+                <td
+                  colSpan={9}
+                  className="p-4 text-center text-[#819067] italic"
+                >
+                  No requests found.
                 </td>
               </tr>
-            )) : (
-              <tr><td colSpan={9} className="p-4 text-center text-[#819067] italic">No requests found.</td></tr>
             )}
           </tbody>
         </table>
@@ -338,127 +431,298 @@ const removeItem = (sku: string, warehouseCode: string) => {
       {isModalOpen && (
         <div className="fixed inset-0 flex items-center justify-center bg-black/40 z-50">
           <div className="bg-white rounded-2xl p-8 w-full max-w-3xl shadow-xl border border-[#E0DCC7]">
-            <h2 className="text-xl font-bold text-[#0A400C] mb-4">{isEditMode ? "Edit Stock Request" : "Create Stock Request"}</h2>
+            <h2 className="text-xl font-bold text-[#0A400C] mb-4">
+              {isEditMode ? "Edit Stock Request" : "Create Stock Request"}
+            </h2>
 
             <div className="grid grid-cols-2 gap-4">
+              {/* Requested By */}
               <div>
-                <label className="block text-sm font-medium text-[#0A400C]">Requested By</label>
-                <input value={form.requester} onChange={(e) => setForm({ ...form, requester: e.target.value })} className="w-full p-2 border rounded-lg mt-1" placeholder="e.g., Juan Dela Cruz"/>
+                <label className="block text-sm font-medium text-[#0A400C]">
+                  Requested By
+                </label>
+                {isEditMode ? (
+                  <input
+                    value={form.requester}
+                    disabled
+                    className="w-full p-2 border rounded-lg mt-1 bg-gray-100 text-gray-600 cursor-not-allowed"
+                  />
+                ) : (
+                  <input
+                    value={form.requester}
+                    onChange={(e) =>
+                      setForm({ ...form, requester: e.target.value })
+                    }
+                    className="w-full p-2 border rounded-lg mt-1"
+                    placeholder="e.g., Juan Dela Cruz"
+                  />
+                )}
               </div>
+
+              {/* Date */}
               <div>
-                <label className="block text-sm font-medium text-[#0A400C]">Date</label>
-                <input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} className="w-full p-2 border rounded-lg mt-1"/>
+                <label className="block text-sm font-medium text-[#0A400C]">
+                  Date
+                </label>
+                {isEditMode ? (
+                  <input
+                    type="date"
+                    value={form.date}
+                    disabled
+                    className="w-full p-2 border rounded-lg mt-1 bg-gray-100 text-gray-600 cursor-not-allowed"
+                  />
+                ) : (
+                  <input
+                    type="date"
+                    value={form.date}
+                    onChange={(e) =>
+                      setForm({ ...form, date: e.target.value })
+                    }
+                    className="w-full p-2 border rounded-lg mt-1"
+                  />
+                )}
               </div>
+
+              {/* Supplier */}
               <div>
-                <label className="block text-sm font-medium text-[#0A400C]">Supplier</label>
-                <select value={form.supplier} onChange={(e) => setForm({ ...form, supplier: e.target.value })} className="w-full p-2 border rounded-lg mt-1">
-                  {SUPPLIERS.map(s => <option key={s} value={s}>{s}</option>)}
-                </select>
+                <label className="block text-sm font-medium text-[#0A400C]">
+                  Supplier
+                </label>
+                {isEditMode ? (
+                  <select
+                    value={form.supplier}
+                    disabled
+                    className="w-full p-2 border rounded-lg mt-1 bg-gray-100 text-gray-600 cursor-not-allowed"
+                  >
+                    {SUPPLIERS.map((s) => (
+                      <option key={s} value={s}>
+                        {s}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <select
+                    value={form.supplier}
+                    onChange={(e) =>
+                      setForm({ ...form, supplier: e.target.value })
+                    }
+                    className="w-full p-2 border rounded-lg mt-1"
+                  >
+                    {SUPPLIERS.map((s) => (
+                      <option key={s} value={s}>
+                        {s}
+                      </option>
+                    ))}
+                  </select>
+                )}
               </div>
+
+              {/* Other supplier */}
               {form.supplier === "Other" && (
                 <div>
-                  <label className="block text-sm font-medium text-[#0A400C]">Other supplier</label>
-                  <input value={form.supplierOther} onChange={(e) => setForm({ ...form, supplierOther: e.target.value })} className="w-full p-2 border rounded-lg mt-1" />
+                  <label className="block text-sm font-medium text-[#0A400C]">
+                    Other supplier
+                  </label>
+                  {isEditMode ? (
+                    <input
+                      value={form.supplierOther}
+                      disabled
+                      className="w-full p-2 border rounded-lg mt-1 bg-gray-100 text-gray-600 cursor-not-allowed"
+                    />
+                  ) : (
+                    <input
+                      value={form.supplierOther}
+                      onChange={(e) =>
+                        setForm({ ...form, supplierOther: e.target.value })
+                      }
+                      className="w-full p-2 border rounded-lg mt-1"
+                    />
+                  )}
                 </div>
               )}
+
+              {/* Warehouse */}
               <div>
-                <label className="block text-sm font-medium text-[#0A400C]">Warehouse</label>
-                <select value={form.warehouse} onChange={(e) => setForm({ ...form, warehouse: e.target.value })} className="w-full p-2 border rounded-lg mt-1">
-                  <option value="">Select warehouse</option>
-                  {warehouseList.map((w) => <option key={w} value={w}>{w}</option>)}
+                <label className="block text-sm font-medium text-[#0A400C]">
+                  Warehouse
+                </label>
+                {isEditMode ? (
+                  <select
+                    value={form.warehouse}
+                    disabled
+                    className="w-full p-2 border rounded-lg mt-1 bg-gray-100 text-gray-600 cursor-not-allowed"
+                  >
+                    <option value="">Select warehouse</option>
+                    {warehouseList.map((w) => (
+                      <option key={w} value={w}>
+                        {w}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <select
+                    value={form.warehouse}
+                    onChange={(e) =>
+                      setForm({ ...form, warehouse: e.target.value })
+                    }
+                    className="w-full p-2 border rounded-lg mt-1"
+                  >
+                    <option value="">Select warehouse</option>
+                    {warehouseList.map((w) => (
+                      <option key={w} value={w}>
+                        {w}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+
+              {/* Status (always editable) */}
+              <div>
+                <label className="block text-sm font-medium text-[#0A400C]">
+                  Status
+                </label>
+                <select
+                  value={form.status}
+                  onChange={(e) =>
+                    setForm({ ...form, status: e.target.value as any })
+                  }
+                  className="w-full p-2 border rounded-lg mt-1"
+                >
+                  {STATUSES.map((s) => (
+                    <option key={s} value={s}>
+                      {s}
+                    </option>
+                  ))}
                 </select>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-[#0A400C]">Status</label>
-                <select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value as any })} className="w-full p-2 border rounded-lg mt-1">
-                  {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
-                </select>
-              </div>
+
+              {/* Note (always editable) */}
               <div className="col-span-2">
-                <label className="block text-sm font-medium text-[#0A400C]">Note</label>
-                <input value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} className="w-full p-2 border rounded-lg mt-1"/>
+                <label className="block text-sm font-medium text-[#0A400C]">
+                  Note
+                </label>
+                <input
+                  value={form.note}
+                  onChange={(e) =>
+                    setForm({ ...form, note: e.target.value })
+                  }
+                  className="w-full p-2 border rounded-lg mt-1"
+                />
               </div>
             </div>
 
-            {/* Inventory quick-add */}
-            <div className="mt-4">
-              <label className="block text-sm font-medium text-[#0A400C]">Add Items (from inventory)</label>
-              <div className="flex flex-wrap gap-2 mt-2 max-h-36 overflow-y-auto">
-                {inventory.map(it => {
-                  const stockArrNums =
-                    typeof it.stock === "object" && it.stock && !Array.isArray(it.stock)
-                      ? (Object.values(it.stock).map((v) => Number(v ?? 0)) as number[])
-                      : Array.isArray(it.stock)
-                      ? it.stock.map((v) => Number(v ?? 0))
-                      : [Number(it.stock ?? 0)];
-                  const total = stockArrNums.reduce((a, b) => a + b, 0);
-                  return (
-                    <button key={it._id} onClick={() => addItem(it)} className="px-3 py-1 border rounded bg-[#E0DCC7] hover:bg-[#D6D1B1]">
-                      {it.name} ({it.sku}) — {total} in {it.warehouseCode.join(", ")}
-                    </button>
-                  );
-                })}
+            {/* Inventory quick-add — ONLY in create mode */}
+            {!isEditMode && (
+              <div className="mt-4">
+                <label className="block text-sm font-medium text-[#0A400C]">
+                  Add Items (from inventory)
+                </label>
+                <div className="flex flex-wrap gap-2 mt-2 max-h-36 overflow-y-auto">
+                  {inventory.map((it) => {
+                    const stockArrNums =
+                      typeof it.stock === "object" &&
+                      it.stock &&
+                      !Array.isArray(it.stock)
+                        ? (Object.values(it.stock).map(
+                            (v) => Number(v ?? 0)
+                          ) as number[])
+                        : Array.isArray(it.stock)
+                        ? it.stock.map((v) => Number(v ?? 0))
+                        : [Number(it.stock ?? 0)];
+                    const total = stockArrNums.reduce((a, b) => a + b, 0);
+                    return (
+                      <button
+                        key={it._id}
+                        onClick={() => addItem(it)}
+                        className="px-3 py-1 border rounded bg-[#E0DCC7] hover:bg-[#D6D1B1]"
+                      >
+                        {it.name} ({it.sku}) — {total} in{" "}
+                        {it.warehouseCode.join(", ")}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
-            </div>
+            )}
 
-            {/* Selected items */}
+            {/* Selected items (read-only in edit mode) */}
             {form.items.length > 0 && (
               <div className="mb-4 mt-4">
                 <table className="w-full border text-sm">
                   <thead className="bg-[#F8F7F2]">
                     <tr>
-                      <th className="p-2">SKU</th>
-                      <th className="p-2">Item Name</th>
-                      <th className="p-2">Warehouse</th>
-                      <th className="p-2">Qty</th>
-                      <th className="p-2">Available</th>
-                      <th className="p-2">Remove</th>
+                      <th className="p-2 text-left">SKU</th>
+                      <th className="p-2 text-left">Item Name</th>
+                      <th className="p-2 text-center">Warehouse</th>
+                      <th className="p-2 text-center">Qty</th>
+                      <th className="p-2 text-right">Available</th>
+                      {!isEditMode && <th className="p-2 text-center">Remove</th>}
                     </tr>
                   </thead>
                   <tbody>
                     {form.items.map(it => (
-  <tr key={`${it.sku}-${it.warehouseCode}`} className="border-t">
-    <td className="p-2">{it.sku}</td>
-    <td className="p-2">{it.name}</td>
-    <td className="p-2">{it.warehouseCode}</td>
-    <td className="p-2">
-      <input
-        type="number"
-        min={1}
-        value={it.qty}
-        onChange={(e) =>
-          updateQty(it.sku, it.warehouseCode, Number(e.target.value || 1))
-        }
-        className="w-20 p-1 border rounded text-center"
-      />
-    </td>
-    <td className="p-2">
-                  {(() => {
-                    const inv = findInv(it.sku);
-                    if (!inv) return 0;
-                    const totalStocks =
-                      typeof inv.stock === "object" && inv.stock
-                        ? (Object.values(inv.stock).map((v) => Number(v ?? 0)) as number[]).reduce((a, b) => a + b, 0)
-                        : Number(inv.stock ?? 0);
-                    return totalStocks;
-                  })()}
-    </td>
-    <td className="p-2">
-      <button onClick={() => removeItem(it.sku, it.warehouseCode)} className="px-2 py-1 text-red-600">
-        ✖️
-      </button>
-    </td>
-  </tr>
-))}
-
+                      <tr key={`${it.sku}-${it.warehouseCode}`} className="border-t">
+                        <td className="p-2 text-left">{it.sku}</td>
+                        <td className="p-2 text-left">{it.name}</td>
+                        <td className="p-2 text-center">{it.warehouseCode}</td>
+                        <td className="p-2 text-center">
+                          {isEditMode ? (
+                            <span>{it.qty}</span>
+                          ) : (
+                            <input
+                              type="number"
+                              min={1}
+                              value={it.qty}
+                              onChange={(e) =>
+                                updateQty(it.sku, it.warehouseCode, Number(e.target.value || 1))
+                              }
+                              className="w-20 p-1 border rounded text-center"
+                            />
+                          )}
+                        </td>
+                        <td className="p-2 text-right">
+                          {(() => {
+                            const inv = findInv(it.sku);
+                            if (!inv) return 0;
+                            const totalStocks =
+                              typeof inv.stock === "object" && inv.stock
+                                ? (Object.values(inv.stock).map((v) => Number(v ?? 0)) as number[])
+                                    .reduce((a, b) => a + b, 0)
+                                : Number(inv.stock ?? 0);
+                            return totalStocks;
+                          })()}
+                        </td>
+                        {!isEditMode && (
+                          <td className="p-2 text-center">
+                            <button
+                              onClick={() => removeItem(it.sku, it.warehouseCode)}
+                              className="px-2 py-1 text-red-600"
+                            >
+                              ✖️
+                            </button>
+                          </td>
+                        )}
+                      </tr>
+                    ))}
                   </tbody>
                 </table>
               </div>
             )}
 
             <div className="mt-6 flex justify-end gap-4">
-              <button onClick={() => setIsModalOpen(false)} className="px-4 py-2 border rounded-lg">Cancel</button>
-              <button onClick={save} className="px-4 py-2 bg-[#0A400C] text-white rounded-lg hover:bg-green-900">{isEditMode ? "Update" : "Create"}</button>
+              <button
+                onClick={() => setIsModalOpen(false)}
+                className="px-4 py-2 border rounded-lg"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={save}
+                className="px-4 py-2 bg-[#0A400C] text-white rounded-lg hover:bg-green-900"
+              >
+                {isEditMode ? "Update" : "Create"}
+              </button>
             </div>
           </div>
         </div>
