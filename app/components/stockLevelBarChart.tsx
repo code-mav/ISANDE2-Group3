@@ -17,6 +17,17 @@ function totalStock(stockValue: number | Record<string, number>): number {
   return (Object.values(stockValue).map((v) => Number(v ?? 0)) as number[]).reduce((a, b) => a + b, 0);
 }
 
+// Helper to get low stock threshold by category
+function getLowStockThreshold(category: string): number {
+  if (category === "Spare Parts" || category === "Tools") {
+    return 15;
+  } else if (category === "Miscellaneous") {
+    return 10;
+  }
+  // Default for Machinery and Electrical
+  return 5;
+}
+
 interface Props {
   items: Item[];
 }
@@ -33,6 +44,7 @@ export default function StockLevelBarChart({ items }: Props) {
   const chartData = filteredItems.map((item) => ({
     name: item.name,
     stock: totalStock(item.stock),
+    category: item.category,
   }));
 
   return (
@@ -66,7 +78,7 @@ export default function StockLevelBarChart({ items }: Props) {
               {chartData.map((entry, index) => (
                 <Cell
                   key={`cell-${index}`}
-                  fill={entry.stock <= 5 ? "#DC2626" : "#0A400C"}
+                  fill={entry.stock <= getLowStockThreshold(entry.category) ? "#DC2626" : "#0A400C"}
                 />
               ))}
             </Bar>

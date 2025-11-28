@@ -22,6 +22,17 @@ function totalStock(stockValue: number | Record<string, number>): number {
   return (Object.values(stockValue).map((v) => Number(v ?? 0)) as number[]).reduce((a, b) => a + b, 0);
 }
 
+// Helper to get low stock threshold by category
+function getLowStockThreshold(category: string): number {
+  if (category === "Spare Parts" || category === "Tools") {
+    return 15;
+  } else if (category === "Miscellaneous") {
+    return 10;
+  }
+  // Default for Machinery and Electrical
+  return 5;
+}
+
 export default function Dashboard() {
   const [items, setItems] = useState<Item[]>([]);
   const [stockRequests, setStockRequests] = useState<any[]>([]);
@@ -69,7 +80,11 @@ export default function Dashboard() {
 
   // Calculate stats
   const totalItems = items.length;
-  const lowStockItems = items.filter((item) => totalStock(item.stock) <= 5).length;
+  const lowStockItems = items.filter((item) => {
+    const stock = totalStock(item.stock);
+    const threshold = getLowStockThreshold(item.category);
+    return stock > 0 && stock <= threshold;
+  }).length;
   const incomingShipments = stockRequests.filter((sr) => sr.status === "Pending" || sr.status === "In Transit").length;
   const pendingOrders = orders.filter((o) => o.status === "Pending" || o.status === "Processing").length;
 

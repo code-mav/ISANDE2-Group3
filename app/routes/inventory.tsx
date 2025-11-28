@@ -1,5 +1,6 @@
 //routes/inventory.tsx
 import { useEffect, useState } from "react";
+import { ProtectedRoute } from "~/components/ProtectedRoute";
 
 interface Item {
   _id?: string;
@@ -12,7 +13,7 @@ interface Item {
   status: string;
 }
 
-export default function InventoryModule() {
+function InventoryContent() {
   const [items, setItems] = useState<Item[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
@@ -91,5 +92,13 @@ export default function InventoryModule() {
     <div className="p-6 min-h-screen bg-[#FAF8F0]">
       {/* ... same table + modal UI ... */}
     </div>
+  );
+}
+
+export default function InventoryModule() {
+  return (
+    <ProtectedRoute allowedModules={["inventory"]}>
+      <InventoryContent />
+    </ProtectedRoute>
   );
 }

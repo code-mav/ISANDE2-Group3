@@ -1,4 +1,5 @@
 import Dashboard from "../components/dashboard";
+import { ProtectedRoute } from "~/components/ProtectedRoute";
 
 export function meta() {
   return [
@@ -8,5 +9,9 @@ export function meta() {
 }
 
 export default function DashboardRoute() {
-  return <Dashboard />;
+  return (
+    <ProtectedRoute allowedModules={["dashboard"]}>
+      <Dashboard />
+    </ProtectedRoute>
+  );
 }

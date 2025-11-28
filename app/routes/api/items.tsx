@@ -10,10 +10,19 @@ function ensureStockObject(stock: any) {
 /** Allowed action names for audit logging. */
 type ActionName = "create" | "update" | "delete";
 
-/** Derive item availability status from a numeric stock value. */
-const computeStatus = (stock: number) => {
+/** Derive item availability status from a numeric stock value and category. */
+const computeStatus = (stock: number, category: string = "") => {
+  // Determine low stock threshold based on category
+  let lowStockThreshold = 5; // default for Machinery and Electrical
+  
+  if (category === "Spare Parts" || category === "Tools") {
+    lowStockThreshold = 15;
+  } else if (category === "Miscellaneous") {
+    lowStockThreshold = 10;
+  }
+  
   if (stock <= 0) return "Out of Stock";
-  if (stock <= 5) return "Low Stock";
+  if (stock <= lowStockThreshold) return "Low Stock";
   return "Available";
 };
 
@@ -321,9 +330,10 @@ export async function action({ request }: { request: Request }) {
         ? body.warehouseCode
         : [body.warehouseCode ?? ""],
       stock: ensureStockObject(body.stock),
-status: computeStatus(
-  (Object.values(ensureStockObject(body.stock)).map((v) => Number(v ?? 0)) as number[]).reduce((a, b) => a + b, 0)
-),
+      status: computeStatus(
+        (Object.values(ensureStockObject(body.stock)).map((v) => Number(v ?? 0)) as number[]).reduce((a, b) => a + b, 0),
+        body.category ?? ""
+      ),
       note: body.note ?? "",
       unitPrice: Number(body.unitPrice ?? 0),
       createdAt: new Date(),
@@ -403,9 +413,10 @@ status: computeStatus(
         ? body.warehouseCode
         : [body.warehouseCode ?? ""],
       stock: newStockObj,
-  status: computeStatus(
-    (Object.values(newStockObj).map((v) => Number(v ?? 0)) as number[]).reduce((a, b) => a + b, 0)
-  ),
+      status: computeStatus(
+        (Object.values(newStockObj).map((v) => Number(v ?? 0)) as number[]).reduce((a, b) => a + b, 0),
+        body.category ?? oldItem.category
+      ),
       note: body.note ?? oldItem.note ?? "",
       unitPrice: Number(
         body.unitPrice ?? oldItem.unitPrice ?? 0

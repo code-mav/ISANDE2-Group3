@@ -1,4 +1,5 @@
 import ReportsModule from "../components/reportsmodule";
+import { ProtectedRoute } from "~/components/ProtectedRoute";
 
 export function meta() {
   return [
@@ -8,5 +9,9 @@ export function meta() {
 }
 
 export default function ReportsRoute() {
-  return <ReportsModule />;
+  return (
+    <ProtectedRoute allowedModules={["reports"]}>
+      <ReportsModule />
+    </ProtectedRoute>
+  );
 }

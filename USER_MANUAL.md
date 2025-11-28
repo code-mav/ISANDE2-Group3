@@ -2,14 +2,15 @@
 
 ## Table of Contents
 1. [Introduction](#introduction)
-2. [Getting Started](#getting-started)
-3. [Dashboard](#dashboard)
-4. [Inventory Module](#inventory-module)
-5. [Orders Module](#orders-module)
-6. [Stock Requests Module](#stock-requests-module)
-7. [Reports Module](#reports-module)
-8. [Notifications](#notifications)
-9. [Troubleshooting](#troubleshooting)
+2. [User Roles and Permissions](#user-roles-and-permissions)
+3. [Getting Started](#getting-started)
+4. [Dashboard](#dashboard)
+5. [Inventory Module](#inventory-module)
+6. [Orders Module](#orders-module)
+7. [Stock Requests Module](#stock-requests-module)
+8. [Reports Module](#reports-module)
+9. [Notifications](#notifications)
+10. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -26,6 +27,7 @@ The **Inventory Management System** is a comprehensive solution designed to help
 - **Comprehensive reporting** with PDF export capability
 - **Low-stock alerts** via notification system
 - **Visual analytics** with charts and graphs
+- **Role-based access control** for secure data management
 
 ### Supported Warehouses
 - **VL1** - Valenzuela Warehouse 1
@@ -36,19 +38,85 @@ The **Inventory Management System** is a comprehensive solution designed to help
 
 ---
 
+## User Roles and Permissions
+
+The system supports **5 distinct user roles**, each with specific access permissions to modules. Your role determines which features and modules you can access.
+
+### Role Access Matrix
+
+| Role | Dashboard | Inventory | Orders | Stock Requests | Reports | Description |
+|------|-----------|-----------|--------|----------------|---------|-------------|
+| **Admin** | ✅ | ✅ | ✅ | ✅ | ✅ | Full access to all modules - system administrator |
+| **Purchasing** | ✅ | ✅ | ❌ | ✅ | ❌ | Manages procurement and inventory planning |
+| **Sales** | ✅ | ✅ | ✅ | ❌ | ❌ | Manages orders and inventory for sales operations |
+| **Staff** | ❌ | ✅ | ❌ | ❌ | ❌ | Basic inventory viewing and management |
+| **Manager** | ✅ | ❌ | ❌ | ❌ | ✅ | Oversight via dashboard and reporting |
+
+### Role Descriptions
+
+#### Administrator
+- **Full system access** to all features and modules
+- Can manage all inventory, orders, stock requests, and reports
+- Recommended for IT staff and system managers
+- Access all warehouses and administrative functions
+
+#### Purchasing
+- Access to **Dashboard**, **Inventory**, and **Stock Requests**
+- Manage stock request submissions and procurement planning
+- View inventory levels and warehouse distribution
+- Ideal for procurement officers and supply chain coordinators
+
+#### Sales
+- Access to **Dashboard**, **Inventory**, and **Orders**
+- Create and manage customer orders
+- Monitor inventory for sales operations
+- Track stock availability for order fulfillment
+- Suitable for sales representatives and order processors
+
+#### Staff
+- Access to **Inventory only**
+- Basic view and manage inventory items
+- Update stock levels and warehouse locations
+- Limited functionality for warehouse operations staff
+
+#### Manager
+- Access to **Dashboard** and **Reports**
+- High-level oversight of inventory performance
+- View detailed reports and analytics
+- Monitor key performance indicators
+- Suitable for department managers and supervisors
+
+---
+
 ## Getting Started
 
-### Accessing the Application
+### Selecting Your Role
 
-1. Open your web browser and navigate to `http://localhost:5173`
-2. The application will load to the **Dashboard** screen
-3. Use the navigation menu at the top to access different modules
+1. Open your web browser and navigate to the application URL
+2. You will see the **Home Screen** with the role selection interface
+3. Choose your role from the available options:
+   - Click the **Administrator**, **Purchasing**, **Sales**, **Staff**, or **Manager** button
+   - Each role displays its description and accessible modules
+4. After selecting your role, you will be automatically redirected to the **Dashboard**
+5. To change roles, click **Change Role** on the home screen
+
+### Changing Your Role
+
+To switch to a different role:
+1. Click **Home** in the navigation bar
+2. Click the **Change Role** button
+3. Select a new role from the available options
+4. Your navigation menu will update based on your new role's permissions
 
 ### Main Navigation
 
-The top navigation bar provides access to:
-- **Dashboard** - Overview of inventory metrics
+The top navigation bar displays only the modules you have access to based on your role:
+- **Home** - Return to the home screen and role selection
+- **Dashboard** - Overview of inventory metrics and KPIs
 - **Inventory** - View and manage inventory items
+- **Orders** - Manage and track customer orders (Sales & Admin only)
+- **Stock Requests** - Track internal stock requests (Purchasing & Admin only)
+- **Reports** - View detailed reports and analytics (Manager & Admin only)
 - **Orders** - Manage customer orders
 - **Stock Requests** - Track incoming shipments
 - **Reports** - View audit logs and generate reports

@@ -1,4 +1,5 @@
 import StockRequestsModule from "../components/stockrequestsmodule";
+import { ProtectedRoute } from "~/components/ProtectedRoute";
 
 export function meta() {
   return [
@@ -8,5 +9,9 @@ export function meta() {
 }
 
 export default function StockRequestsRoute() {
-  return <StockRequestsModule />;
+  return (
+    <ProtectedRoute allowedModules={["stockrequests"]}>
+      <StockRequestsModule />
+    </ProtectedRoute>
+  );
 }
