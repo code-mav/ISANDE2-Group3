@@ -7,10 +7,12 @@ interface Item {
   sku: string;
   name: string;
   category: string;
-  warehouseLoc: string;
-  warehouseCode: string;
-  stock: number;
+  warehouseLoc: string[];   // array
+  warehouseCode: string[];  // array
+  stock: number | Record<string, number>;
+  unitPrice?: number;
   status: string;
+  note?: string;           
   createdAt?: string;
 }
 
@@ -24,14 +26,17 @@ export default function InventoryModule() {
     sku: "",
     name: "",
     category: "Machinery",
-    warehouseLoc: "Valenzuela",
-    warehouseCode: "WH1",
+    warehouseLoc: ["Valenzuela"],
+    warehouseCode: ["VL1"],
     stock: 0,
+    unitPrice: 0,
     status: "Available",
+    note: "",            
   });
 
   const [searchTerm, setSearchTerm] = useState("");
   const [filterWarehouse, setFilterWarehouse] = useState("All");
+  const [filterWarehouseCode, setFilterWarehouseCode] = useState("All");
   const [filterCategory, setFilterCategory] = useState("All");
   const [sortBy, setSortBy] = useState("newest");
   const [currentPage, setCurrentPage] = useState(1);
@@ -41,7 +46,18 @@ export default function InventoryModule() {
   const fetchItems = async () => {
     const res = await fetch("/api/items");
     const data = await res.json();
-    setItems(data);
+    setItems(
+      data.map((item: any) => ({
+        ...item,
+        warehouseLoc: Array.isArray(item.warehouseLoc)
+          ? item.warehouseLoc
+          : [item.warehouseLoc || ""],
+        warehouseCode: Array.isArray(item.warehouseCode)
+          ? item.warehouseCode
+          : [item.warehouseCode || ""],
+        note: item.note || "",  
+      }))
+    );
   };
 
   useEffect(() => {
@@ -49,19 +65,35 @@ export default function InventoryModule() {
   }, []);
 
   // Handle input changes
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-  const { name, value } = e.target;
+  const handleChange = (
+    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>
+  ) => {
+    const { name, value, options } = e.target as HTMLSelectElement;
 
-  if (name === "warehouseLoc") {
-    setNewItem({
-      ...newItem,
-      warehouseLoc: value,
-      warehouseCode: getWarehouseCodes(value)[0], // reset code automatically
-    });
-  } else {
-    setNewItem({ ...newItem, [name]: value });
-  }
-};
+    if (name === "warehouseLoc") {
+      const selected = Array.from(options)
+        .filter((o: any) => o.selected)
+        .map((o: any) => o.value);
+      setNewItem({
+        ...newItem,
+        warehouseLoc: selected,
+        warehouseCode: getWarehouseCodes(selected),
+      });
+    } else if (name === "warehouseCode") {
+      const selected = Array.from(options)
+        .filter((o: any) => o.selected)
+        .map((o: any) => o.value);
+      setNewItem({ ...newItem, warehouseCode: selected });
+    } else {
+      // coerce numeric fields
+      if (name === "stock" || name === "unitPrice") {
+        const num = Number(value);
+        setNewItem({ ...newItem, [name]: isNaN(num) ? 0 : num });
+      } else {
+        setNewItem({ ...newItem, [name]: value });
+      }
+    }
+  };
 
   const openAddModal = () => {
     setIsEditMode(false);
@@ -69,10 +101,11 @@ export default function InventoryModule() {
       sku: "",
       name: "",
       category: "Machinery",
-      warehouseLoc: "Valenzuela",
-      warehouseCode: "WH1",
+      warehouseLoc: ["Valenzuela"],
+      warehouseCode: ["VL1"],
       stock: 0,
       status: "Available",
+      note: "",
     });
     setIsModalOpen(true);
   };
@@ -86,30 +119,30 @@ export default function InventoryModule() {
 
   // Add or Update in MongoDB
   const addOrUpdateItem = async () => {
-  if (!newItem.sku || !newItem.name) {
-    alert("Please fill in all required fields.");
-    return;
-  }
+    if (!newItem.sku || !newItem.name) {
+      alert("Please fill in all required fields.");
+      return;
+    }
 
-  const method = isEditMode ? "PUT" : "POST";
-  const body = JSON.stringify({ ...newItem, _id: selectedItemId });
+    const method = isEditMode ? "PUT" : "POST";
+    const body = JSON.stringify({ ...newItem, _id: selectedItemId });
 
-  const res = await fetch("/api/items", {
-    method,
-    headers: { "Content-Type": "application/json" },
-    body,
-  });
+    const res = await fetch("/api/items", {
+      method,
+      headers: { "Content-Type": "application/json" },
+      body,
+    });
 
-  const data = await res.json();
+    const data = await res.json();
 
-  if (!res.ok) {
-    alert(data.message || "Failed to save item. Please try again.");
-    return;
-  }
+    if (!res.ok) {
+      alert(data.message || "Failed to save item. Please try again.");
+      return;
+    }
 
-  setIsModalOpen(false);
-  await fetchItems();
-};
+    setIsModalOpen(false);
+    await fetchItems();
+  };
 
   // Delete item
   const deleteItem = async (id: string | undefined) => {
@@ -121,81 +154,93 @@ export default function InventoryModule() {
     }
   };
 
-const filteredItems = items
-  .filter((item) => {
-    const matchesSearch =
-      item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.sku.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesWarehouse =
-      filterWarehouse === "All" || item.warehouseLoc === filterWarehouse;
-    const matchesCategory =
-      filterCategory === "All" || item.category === filterCategory;
-    return matchesSearch && matchesWarehouse && matchesCategory;
-  })
-  .sort((a, b) => {
-    if (sortBy === "name") return a.name.localeCompare(b.name);
-    if (sortBy === "stock") return b.stock - a.stock;
-    if (sortBy === "newest") {
-      const dateA = new Date(a.createdAt || 0).getTime();
-      const dateB = new Date(b.createdAt || 0).getTime();
-      return dateB - dateA;
-    }
-    return 0;
-  });
+  const filteredItems = items
+    .filter((item) => {
+      const matchesSearch =
+        item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        item.sku.toLowerCase().includes(searchTerm.toLowerCase());
+      const matchesWarehouse =
+        filterWarehouse === "All" || item.warehouseLoc.includes(filterWarehouse);
+      const matchesWarehouseCode =
+        filterWarehouseCode === "All" || item.warehouseCode.includes(filterWarehouseCode);
+      const matchesCategory =
+        filterCategory === "All" || item.category === filterCategory;
+      return matchesSearch && matchesWarehouse && matchesWarehouseCode && matchesCategory;
+    })
+    .sort((a, b) => {
+      const totalStock = (s: number | Record<string, number> | undefined) => {
+        if (s === undefined || s === null) return 0;
+        if (typeof s === "number") return Number(s || 0);
+        return (Object.values(s).map((v) => Number(v ?? 0)) as number[]).reduce((x, y) => x + y, 0);
+      };
+      if (sortBy === "name") return a.name.localeCompare(b.name);
+      if (sortBy === "stock") return totalStock(a.stock) - totalStock(b.stock);
+      if (sortBy === "newest") {
+        const dateA = new Date(a.createdAt || 0).getTime();
+        const dateB = new Date(b.createdAt || 0).getTime();
+        return dateB - dateA;
+      }
+      return 0;
+    });
 
-const totalPages = Math.ceil(filteredItems.length / itemsPerPage);
-const paginatedItems = filteredItems.slice(
-  (currentPage - 1) * itemsPerPage,
-  currentPage * itemsPerPage
-);
+  const totalPages = Math.ceil(filteredItems.length / itemsPerPage);
+  const paginatedItems = filteredItems.slice(
+    (currentPage - 1) * itemsPerPage,
+    currentPage * itemsPerPage
+  );
 
+  // Helper: compute total across warehouses
+  const totalStock = (s: number | Record<string, number> | undefined) => {
+    if (s === undefined || s === null) return 0;
+    if (typeof s === "number") return Number(s || 0);
+    return (Object.values(s).map((v) => Number(v ?? 0)) as number[]).reduce((a, b) => a + b, 0);
+  };
 
-  // Get color + badge for status
-  const getStatusBadge = (stock: number) => {
+  const getStatusBadge = (stock: number | Record<string, number> | undefined) => {
+    const t = totalStock(stock);
     let label = "Available";
     let color = "bg-green-100 text-green-700";
-
-    if (stock <= 0) {
+    if (t <= 0) {
       label = "Out of Stock";
       color = "bg-red-100 text-red-700";
-    } else if (stock <= 5) {
+    } else if (t <= 5) {
       label = "Low Stock";
       color = "bg-orange-100 text-orange-700";
     }
-
-    return (
-      <span
-        className={`px-3 py-1 rounded-full text-sm font-semibold ${color}`}
-      >
-        {label}
-      </span>
-    );
+    return <span className={`px-3 py-1 rounded-full text-sm font-semibold ${color}`}>{label}</span>;
   };
 
-// Get available warehouse codes depending on location
-const getWarehouseCodes = (location: string) => {
-  if (location === "Malabon") return ["WH1"];
-  if (location === "Valenzuela") return ["WH1", "WH2", "WH3", "WH4"];
-  return [];
-};
+  // Map warehouse location to codes
+  const getWarehouseCodes = (locations: string[]) => {
+    const codes: string[] = [];
+    locations.forEach((loc) => {
+      if (loc === "Malabon") codes.push("MB1");
+      if (loc === "Valenzuela") codes.push("VL1", "VL2", "VL3", "VL4");
+    });
+    return codes;
+  };
+
+  const formatArrayField = (field: string[] | string | undefined) => {
+    if (!field) return "";
+    return Array.isArray(field) ? field.join(", ") : field;
+  };
 
   return (
     <div className="p-6 min-h-screen bg-[#FAF8F0]">
       <div className="text-center mb-6">
-  <h1 className="text-3xl font-bold text-[#0A400C]">Inventory Management</h1>
-  <p className="mt-2 text-[#819067] text-lg">
-    Manage and view stock items across warehouses.
-  </p>
-  <button
-    onClick={openAddModal}
-    className="mt-4 px-6 py-2 bg-[#0A400C] text-white rounded-lg hover:bg-green-900 transition"
-  >
-    + Add New Item
-  </button>
-</div>
+        <h1 className="text-3xl font-bold text-[#0A400C]">Inventory Management</h1>
+        <p className="mt-2 text-[#819067] text-lg">
+          Manage and view stock items across warehouses.
+        </p>
+        <button
+          onClick={openAddModal}
+          className="mt-4 px-6 py-2 bg-[#0A400C] text-white rounded-lg hover:bg-green-900 transition"
+        >
+          + Add New Item
+        </button>
+      </div>
 
-
-      {/* Search & Filters */}
+      {/* Filters */}
       <div className="mt-6 bg-white rounded-2xl shadow p-4 flex flex-wrap items-center gap-4 border border-[#E0DCC7]">
         <input
           type="text"
@@ -205,13 +250,16 @@ const getWarehouseCodes = (location: string) => {
           className="flex-1 min-w-[220px] p-2 border rounded-lg focus:ring-2 focus:ring-[#0A400C]"
         />
         <select
-          value={filterWarehouse}
-          onChange={(e) => setFilterWarehouse(e.target.value)}
+          value={filterWarehouseCode}
+          onChange={(e) => setFilterWarehouseCode(e.target.value)}
           className="p-2 border rounded-lg"
         >
-          <option value="All">All Warehouses</option>
-          <option value="Valenzuela">Valenzuela</option>
-          <option value="Malabon">Malabon</option>
+          <option value="All">All Codes</option>
+          <option value="VL1">VL1</option>
+          <option value="VL2">VL2</option>
+          <option value="VL3">VL3</option>
+          <option value="VL4">VL4</option>
+          <option value="MB1">MB1</option>
         </select>
         <select
           value={filterCategory}
@@ -219,13 +267,12 @@ const getWarehouseCodes = (location: string) => {
           className="p-2 border rounded-lg"
         >
           <option value="All">All Categories</option>
-          <option value="Machinery">Machinery</option>
-          <option value="Spare Parts">Spare Parts</option>
-          <option value="Electrical">Electrical</option>
-          <option value="Tools">Tools</option>
-          <option value="Miscellaneous">Miscellaneous</option>
+          <option>Machinery</option>
+          <option>Spare Parts</option>
+          <option>Electrical</option>
+          <option>Tools</option>
+          <option>Miscellaneous</option>
         </select>
-
         <select
           value={sortBy}
           onChange={(e) => setSortBy(e.target.value)}
@@ -235,11 +282,11 @@ const getWarehouseCodes = (location: string) => {
           <option value="name">Sort by: Name</option>
           <option value="stock">Sort by: Stock</option>
         </select>
-
         <button
           onClick={() => {
             setSearchTerm("");
             setFilterWarehouse("All");
+            setFilterWarehouseCode("All");
             setFilterCategory("All");
             setSortBy("newest");
           }}
@@ -250,87 +297,116 @@ const getWarehouseCodes = (location: string) => {
       </div>
 
       {/* Table */}
-      <div className="mt-6 bg-white rounded-2xl shadow p-4 overflow-x-auto">
-        <table className="w-full text-left">
-          <thead className="border-b">
-            <tr className="text-[#0A400C]">
-              <th className="p-2">#</th>
-              <th className="p-2">SKU</th>
-              <th className="p-2">Item Name</th>
-              <th className="p-2">Category</th>
-              <th className="p-2">Warehouse</th>
-              <th className="p-2">Code</th>
-              <th className="p-2">Stock</th>
-              <th className="p-2">Status</th>
-              <th className="p-2 text-center">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {paginatedItems.length > 0 ? (
-              paginatedItems.map((item, index) => (
-                <tr key={item._id || index} className="border-b hover:bg-gray-50">
-                  <td className="p-2">{(currentPage - 1) * itemsPerPage + index + 1}</td>
-                  <td className="p-2 font-semibold">{item.sku}</td>
-                  <td className="p-2">{item.name}</td>
-                  <td className="p-2">{item.category}</td>
-                  <td className="p-2">{item.warehouseLoc}</td>
-                  <td className="p-2">{item.warehouseCode}</td>
-                  <td
-                    className={`p-2 font-semibold ${
-                      item.stock <= 5 ? "text-red-600" : "text-green-700"
-                    }`}
-                  >
-                    {item.stock}
-                  </td>
-                  <td className="p-2">{getStatusBadge(item.stock)}</td>
-                  <td className="p-2 text-center space-x-2">
-                    <button
-                      onClick={() => openEditModal(item)}
-                      className="px-3 py-1 bg-[#E0DCC7] text-[#0A400C] rounded-lg hover:bg-[#D6D1B1]"
-                    >
-                      ✏️ Edit
-                    </button>
-                    <button
-                      onClick={() => deleteItem(item._id)}
-                      className="px-3 py-1 bg-red-600 text-white rounded-lg hover:bg-red-700"
-                    >
-                      🗑️ Delete
-                    </button>
-                  </td>
-                </tr>
-              ))
-            ) : (
-              <tr>
-                <td colSpan={9} className="p-4 text-center text-[#819067] italic">
-                  No items found matching your search or filter criteria.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+<div className="mt-6 bg-white rounded-2xl shadow p-4 overflow-x-auto border border-[#E0DCC7]">
+  <table className="w-full text-left bg-white">
+    <thead className="border-b bg-[#F9F8F4]">
+        <tr className="text-[#0A400C]">
+        <th className="p-3 text-left">#</th>
+        <th className="p-3 text-left">SKU</th>
+        <th className="p-3 text-left">Item Name</th>
+        <th className="p-3 text-left">Category</th>
+        <th className="p-3 text-left">Warehouse</th>
+        <th className="p-3 text-left">Stock</th>
+        <th className="p-3 text-right">Unit Price (₱)</th>
+        <th className="p-3 text-center">Status</th>
+        <th className="p-3">Note</th>
+        <th className="p-3 text-center">Actions</th>
+      </tr>
+    </thead>
 
-<div className="flex justify-center items-center gap-3 mt-4">
-  <button
-    onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
-    disabled={currentPage === 1}
-    className="px-3 py-1 bg-[#E0DCC7] text-[#0A400C] rounded-lg disabled:opacity-50"
-  >
-    ⬅ Prev
-  </button>
+    <tbody>
+      {paginatedItems.length > 0 ? (
+        paginatedItems.map((item, index) => (
+          <tr
+            key={item._id || index}
+            className="border-b hover:bg-gray-50 bg-white transition-colors"
+          >
+            <td className="p-2">{(currentPage - 1) * itemsPerPage + index + 1}</td>
+            <td className="p-2 font-semibold">{item.sku}</td>
+            <td className="p-2">{item.name}</td>
+            <td className="p-2">{item.category}</td>
+            <td className="p-2">{formatArrayField(item.warehouseLoc)}</td>
+            <td className="p-2 align-top">
+              <div className="flex flex-wrap gap-2">
+                {typeof item.stock === "object"
+                  ? Object.entries(item.stock).map(([wh, q]) => (
+                      <span
+                        key={wh}
+                        className={`inline-block px-2 py-1 text-xs rounded-md border ${Number(q) <= 5 ? 'bg-red-50 border-red-200 text-red-700' : 'bg-green-50 border-green-200 text-green-700'}`}
+                        title={`${wh}: ${q}`}
+                      >
+                        {wh}: {Number(q)}
+                      </span>
+                    ))
+                  : (
+                    <span className={`inline-block px-2 py-1 text-xs rounded-md ${totalStock(item.stock) <= 5 ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700'}`}>
+                      {Number(item.stock)}
+                    </span>
+                  )}
+              </div>
+            </td>
+            <td className="p-2 text-right">{item.unitPrice?.toFixed(2) ?? "—"}</td>
+            <td className="p-2 text-center">{getStatusBadge(item.stock)}</td>
 
-  <span className="text-[#0A400C] font-medium">
-    Page {currentPage} of {totalPages}
-  </span>
+            {/* Note column */}
+            <td
+              className="p-2 max-w-[160px] truncate whitespace-nowrap overflow-hidden text-ellipsis text-sm"
+              title={item.note || ""}
+            >
+              {item.note || "—"}
+            </td>
 
-  <button
-    onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
-    disabled={currentPage === totalPages}
-    className="px-3 py-1 bg-[#E0DCC7] text-[#0A400C] rounded-lg disabled:opacity-50"
-  >
-    Next ➡
-  </button>
+            {/* Edit/Delete buttons */}
+            <td className="p-2 text-center space-x-1">
+              <button
+                onClick={() => openEditModal(item)}
+                className="px-2 py-1 bg-[#E0DCC7] text-[#0A400C] rounded-md text-sm hover:bg-[#D6D1B1] transition"
+              >
+                ✏️
+              </button>
+              <button
+                onClick={() => deleteItem(item._id)}
+                className="px-2 py-1 bg-red-600 text-white rounded-md text-sm hover:bg-red-700 transition"
+              >
+                🗑️
+              </button>
+            </td>
+          </tr>
+        ))
+      ) : (
+        <tr>
+          <td colSpan={10} className="p-4 text-center text-[#819067] italic bg-white">
+            No items found matching your search or filter criteria.
+          </td>
+        </tr>
+      )}
+    </tbody>
+  </table>
 </div>
+
+
+
+
+      {/* Pagination */}
+      <div className="flex justify-center items-center gap-3 mt-4">
+        <button
+          onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
+          disabled={currentPage === 1}
+          className="px-3 py-1 bg-[#E0DCC7] text-[#0A400C] rounded-lg disabled:opacity-50"
+        >
+          ⬅ Prev
+        </button>
+        <span className="text-[#0A400C] font-medium">
+          Page {currentPage} of {totalPages}
+        </span>
+        <button
+          onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
+          disabled={currentPage === totalPages}
+          className="px-3 py-1 bg-[#E0DCC7] text-[#0A400C] rounded-lg disabled:opacity-50"
+        >
+          Next ➡
+        </button>
+      </div>
 
       {/* Modal */}
       {isModalOpen && (
@@ -342,9 +418,7 @@ const getWarehouseCodes = (location: string) => {
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-[#0A400C]">
-                  Item Code (SKU)
-                </label>
+                <label className="block text-sm font-medium text-[#0A400C]">Item Code (SKU)</label>
                 <input
                   type="text"
                   name="sku"
@@ -356,9 +430,7 @@ const getWarehouseCodes = (location: string) => {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-[#0A400C]">
-                  Item Name
-                </label>
+                <label className="block text-sm font-medium text-[#0A400C]">Item Name</label>
                 <input
                   type="text"
                   name="name"
@@ -370,9 +442,7 @@ const getWarehouseCodes = (location: string) => {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-[#0A400C]">
-                  Category
-                </label>
+                <label className="block text-sm font-medium text-[#0A400C]">Category</label>
                 <select
                   name="category"
                   value={newItem.category}
@@ -387,49 +457,119 @@ const getWarehouseCodes = (location: string) => {
                 </select>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-[#0A400C]">
-                  Warehouse Location
+              {/* Warehouse Selection */}
+              <div className="col-span-2">
+                <label className="block text-sm font-medium text-[#0A400C] mb-1">
+                  Warehouse Selection
                 </label>
-                <select
-                  name="warehouseLoc"
-                  value={newItem.warehouseLoc}
-                  onChange={handleChange}
-                  className="w-full p-2 border rounded-lg mt-1"
-                >
-                  <option>Valenzuela</option>
-                  <option>Malabon</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-[#0A400C]">
-                  Warehouse Code
-                </label>
-                <select
-                name="warehouseCode"
-                value={newItem.warehouseCode}
-                onChange={handleChange}
-                className="w-full p-2 border rounded-lg mt-1"
-                >
-                {getWarehouseCodes(newItem.warehouseLoc).map((code) => (
-                 <option key={code}>{code}</option>
+                {Object.entries({
+                  Valenzuela: ["VL1", "VL2", "VL3", "VL4"],
+                  Malabon: ["MB1"]
+                }).map(([loc, codes]) => (
+                  <div key={loc} className="mb-2">
+                    <strong className="block">{loc}</strong>
+                    <div className="flex flex-wrap gap-2 mt-1">
+                      {codes.map((code) => (
+                        <label key={code} className="inline-flex items-center gap-1">
+                          <input
+                            type="checkbox"
+                            value={code}
+                            checked={newItem.warehouseCode.includes(code)}
+                            onChange={(e) => {
+                              const checked = e.target.checked;
+                              let updatedCodes = [...newItem.warehouseCode];
+                              if (checked) {
+                                updatedCodes.push(code);
+                              } else {
+                                updatedCodes = updatedCodes.filter((c) => c !== code);
+                              }
+                              const updatedLocs = Array.from(new Set(updatedCodes.map((c) =>
+                                c.startsWith("VL") ? "Valenzuela" : "Malabon"
+                              )));
+                              setNewItem({
+                                ...newItem,
+                                warehouseCode: updatedCodes,
+                                warehouseLoc: updatedLocs,
+                              });
+                            }}
+                            className="h-4 w-4"
+                          />
+                          {code}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
                 ))}
-                </select>
-
               </div>
 
               <div className="col-span-2">
-                <label className="block text-sm font-medium text-[#0A400C]">
-                  Current Stock
-                </label>
-                <input
-                  type="number"
-                  name="stock"
-                  value={newItem.stock}
+                <label className="block text-sm font-medium text-[#0A400C]">Current Stock</label>
+                {Array.isArray(newItem.warehouseCode) && newItem.warehouseCode.length > 0 ? (
+                  <div className="grid grid-cols-2 gap-2 mt-2">
+                    {newItem.warehouseCode.map((code) => {
+                      const val =
+                        typeof newItem.stock === "object"
+                          ? Number((newItem.stock as Record<string, number>)[code] ?? 0)
+                          : Number(newItem.stock ?? 0);
+                      return (
+                        <div key={code} className="flex items-center gap-2">
+                          <span className="w-20">{code}</span>
+                          <input
+                            type="number"
+                            min={0}
+                            value={val}
+                            onChange={(e) => {
+                              const n = Number(e.target.value || 0);
+                              const stockObj: Record<string, number> =
+                                typeof newItem.stock === "object" && newItem.stock
+                                  ? { ...(newItem.stock as Record<string, number>) }
+                                  : {};
+                              stockObj[code] = isNaN(n) ? 0 : n;
+                              setNewItem({ ...newItem, stock: stockObj });
+                            }}
+                            className="w-full p-2 border rounded-lg mt-1"
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <input
+                    type="number"
+                    name="stock"
+                    value={typeof newItem.stock === "number" ? newItem.stock : 0}
+                    onChange={handleChange}
+                    className="w-full p-2 border rounded-lg mt-1"
+                    min="0"
+                  />
+                )}
+              </div>
+
+              <div className="col-span-2">
+  <label className="block text-sm font-medium text-[#0A400C]">Unit Price (₱)</label>
+  <input
+    type="number"
+    name="unitPrice"
+    value={newItem.unitPrice}
+    onChange={handleChange}
+    className="w-full p-2 border rounded-lg mt-1"
+    min="0"
+    step="0.01"
+    placeholder="e.g., 1500.00"
+  />
+</div>
+
+
+              {/* Note field */}
+              <div className="col-span-2">
+                <label className="block text-sm font-medium text-[#0A400C]">Adjustment Note</label>
+                <textarea
+                  name="note"
+                  value={newItem.note}
                   onChange={handleChange}
                   className="w-full p-2 border rounded-lg mt-1"
-                  min="0"
+                  placeholder="Optional note..."
+                  rows={2}
                 />
               </div>
             </div>
