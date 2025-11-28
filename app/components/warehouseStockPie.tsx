@@ -84,9 +84,6 @@ export default function WarehouseStockPie({ items }: { items: Item[] }) {
     "#6366F1",
   ];
 
-  // -------------------------------------
-  // RENDER
-  // -------------------------------------
   return (
     <div className="w-full space-y-4">
 
