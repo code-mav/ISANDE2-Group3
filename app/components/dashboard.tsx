@@ -1,8 +1,8 @@
 // components/dashboard.tsx
 
 import { useEffect, useState } from "react";
-import { PieChart, Pie, Cell, Legend, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer } from "recharts";
 import StockLevelBarChart from "./stockLevelBarChart";
+import WarehouseStockPie from "./warehouseStockPie";
 
 
 interface Item {
@@ -22,49 +22,15 @@ function totalStock(stockValue: number | Record<string, number>): number {
   return (Object.values(stockValue).map((v) => Number(v ?? 0)) as number[]).reduce((a, b) => a + b, 0);
 }
 
-// Pie chart component for warehouse stock distribution
-function WarehouseStockPie({ items }: { items: Item[] }) {
-  const warehouseData = items.reduce((acc: Record<string, number>, item) => {
-    if (typeof item.stock === "object" && item.stock) {
-      Object.entries(item.stock).forEach(([warehouse, qty]) => {
-        acc[warehouse] = (acc[warehouse] || 0) + Number(qty ?? 0);
-      });
-    } else {
-      const warehouse = item.warehouseLoc || "Unknown";
-      acc[warehouse] = (acc[warehouse] || 0) + totalStock(item.stock);
-    }
-    return acc;
-  }, {});
-
-  const chartData = Object.entries(warehouseData).map(([name, value]) => ({
-    name,
-    value,
-  }));
-
-  const COLORS = ["#0A400C", "#DC2626", "#2563EB", "#F59E0B", "#8B5CF6", "#10B981", "#EC4899"];
-
-  return (
-    <ResponsiveContainer width="100%" height={300}>
-      <PieChart>
-        <Pie
-          data={chartData}
-          cx="50%"
-          cy="50%"
-          labelLine={false}
-          label={({ name, value }) => `${name}: ${value}`}
-          outerRadius={80}
-          fill="#8884d8"
-          dataKey="value"
-        >
-          {chartData.map((entry, index) => (
-            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-          ))}
-        </Pie>
-        <Tooltip formatter={(value) => `${value} units`} />
-        <Legend />
-      </PieChart>
-    </ResponsiveContainer>
-  );
+// Helper to get low stock threshold by category
+function getLowStockThreshold(category: string): number {
+  if (category === "Spare Parts" || category === "Tools") {
+    return 15;
+  } else if (category === "Miscellaneous") {
+    return 10;
+  }
+  // Default for Machinery and Electrical
+  return 5;
 }
 
 export default function Dashboard() {
@@ -114,7 +80,11 @@ export default function Dashboard() {
 
   // Calculate stats
   const totalItems = items.length;
-  const lowStockItems = items.filter((item) => totalStock(item.stock) <= 5).length;
+  const lowStockItems = items.filter((item) => {
+    const stock = totalStock(item.stock);
+    const threshold = getLowStockThreshold(item.category);
+    return stock > 0 && stock <= threshold;
+  }).length;
   const incomingShipments = stockRequests.filter((sr) => sr.status === "Pending" || sr.status === "In Transit").length;
   const pendingOrders = orders.filter((o) => o.status === "Pending" || o.status === "Processing").length;
 

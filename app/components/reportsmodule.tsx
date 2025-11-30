@@ -260,9 +260,17 @@ export default function ReportsModule() {
     }
   };
 
-  const statusFromStock = (stock: number) => {
+  const statusFromStock = (stock: number, category: string = "") => {
+    // Determine low stock threshold based on category
+    let threshold = 5; // default for Machinery and Electrical
+    if (category === "Spare Parts" || category === "Tools") {
+      threshold = 15;
+    } else if (category === "Miscellaneous") {
+      threshold = 10;
+    }
+    
     if (Number(stock) <= 0) return "Out of Stock";
-    if (Number(stock) <= 5) return "Low Stock";
+    if (Number(stock) <= threshold) return "Low Stock";
     return "Available";
   };
 
@@ -295,7 +303,14 @@ export default function ReportsModule() {
     const lowStock = items.filter(
       (it) => {
         const stock = totalStock(it.stock);
-        return stock > 0 && stock <= 5;
+        // Determine low stock threshold based on category
+        let threshold = 5; // default for Machinery and Electrical
+        if (it.category === "Spare Parts" || it.category === "Tools") {
+          threshold = 15;
+        } else if (it.category === "Miscellaneous") {
+          threshold = 10;
+        }
+        return stock > 0 && stock <= threshold;
       }
     ).length;
     const outOfStock = items.filter(
@@ -612,7 +627,7 @@ export default function ReportsModule() {
             yPosition = margin;
           }
           const stockNum = totalStock(it.stock);
-          const statusText = statusFromStock(stockNum);
+          const statusText = statusFromStock(stockNum, it.category);
           const itemSku = sanitizeForPDF(it.sku || "—");
           const itemName = sanitizeForPDF(it.name || "—");
           const itemCat = sanitizeForPDF(it.category || "—");
@@ -1169,7 +1184,7 @@ export default function ReportsModule() {
                           const stockNum =
                             totalStock(it.stock);
                           const statusText =
-                            statusFromStock(stockNum);
+                            statusFromStock(stockNum, it.category);
                           return (
                             <tr
                               key={it._id || idx}

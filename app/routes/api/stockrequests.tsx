@@ -23,6 +23,17 @@ function toNum(v: any): number {
   return Number(v ?? 0);
 }
 
+// Helper to get low stock threshold by category
+function getLowStockThreshold(category: string): number {
+  if (category === "Spare Parts" || category === "Tools") {
+    return 15;
+  } else if (category === "Miscellaneous") {
+    return 10;
+  }
+  // Default for Machinery and Electrical
+  return 5;
+}
+
 async function generateRequestId(db: any): Promise<string> {
   const t = new Date();
   const YYYY = t.getFullYear();
@@ -98,7 +109,7 @@ async function applyInventory(
     const status =
       totalStock <= 0
         ? "Out of Stock"
-        : totalStock <= 5
+        : totalStock <= getLowStockThreshold(inv.category || "")
         ? "Low Stock"
         : "Available";
 

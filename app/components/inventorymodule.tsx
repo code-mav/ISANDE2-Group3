@@ -16,6 +16,17 @@ interface Item {
   createdAt?: string;
 }
 
+// Utility function to get low stock threshold by category
+const getLowStockThreshold = (category: string): number => {
+  if (category === "Spare Parts" || category === "Tools") {
+    return 15;
+  } else if (category === "Miscellaneous") {
+    return 10;
+  }
+  // Default for Machinery and Electrical
+  return 5;
+};
+
 export default function InventoryModule() {
   const [items, setItems] = useState<Item[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -196,14 +207,15 @@ export default function InventoryModule() {
     return (Object.values(s).map((v) => Number(v ?? 0)) as number[]).reduce((a, b) => a + b, 0);
   };
 
-  const getStatusBadge = (stock: number | Record<string, number> | undefined) => {
+  const getStatusBadge = (stock: number | Record<string, number> | undefined, category: string = "") => {
     const t = totalStock(stock);
+    const threshold = getLowStockThreshold(category);
     let label = "Available";
     let color = "bg-green-100 text-green-700";
     if (t <= 0) {
       label = "Out of Stock";
       color = "bg-red-100 text-red-700";
-    } else if (t <= 5) {
+    } else if (t <= threshold) {
       label = "Low Stock";
       color = "bg-orange-100 text-orange-700";
     }
@@ -329,24 +341,28 @@ export default function InventoryModule() {
             <td className="p-2 align-top">
               <div className="flex flex-wrap gap-2">
                 {typeof item.stock === "object"
-                  ? Object.entries(item.stock).map(([wh, q]) => (
-                      <span
-                        key={wh}
-                        className={`inline-block px-2 py-1 text-xs rounded-md border ${Number(q) <= 5 ? 'bg-red-50 border-red-200 text-red-700' : 'bg-green-50 border-green-200 text-green-700'}`}
-                        title={`${wh}: ${q}`}
-                      >
-                        {wh}: {Number(q)}
-                      </span>
-                    ))
+                  ? Object.entries(item.stock).map(([wh, q]) => {
+                      const threshold = getLowStockThreshold(item.category);
+                      const isLow = Number(q) <= threshold;
+                      return (
+                        <span
+                          key={wh}
+                          className={`inline-block px-2 py-1 text-xs rounded-md border ${isLow ? 'bg-red-50 border-red-200 text-red-700' : 'bg-green-50 border-green-200 text-green-700'}`}
+                          title={`${wh}: ${q}`}
+                        >
+                          {wh}: {Number(q)}
+                        </span>
+                      );
+                    })
                   : (
-                    <span className={`inline-block px-2 py-1 text-xs rounded-md ${totalStock(item.stock) <= 5 ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700'}`}>
+                    <span className={`inline-block px-2 py-1 text-xs rounded-md ${totalStock(item.stock) <= getLowStockThreshold(item.category) ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700'}`}>
                       {Number(item.stock)}
                     </span>
                   )}
               </div>
             </td>
             <td className="p-2 text-right">{item.unitPrice?.toFixed(2) ?? "—"}</td>
-            <td className="p-2 text-center">{getStatusBadge(item.stock)}</td>
+            <td className="p-2 text-center">{getStatusBadge(item.stock, item.category)}</td>
 
             {/* Note column */}
             <td

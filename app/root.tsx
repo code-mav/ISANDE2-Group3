@@ -11,6 +11,7 @@ import {
 import { useState, useEffect } from "react";
 import { Bell } from "lucide-react";
 import "./app.css";
+import { RoleProvider, useRole } from "~/contexts/RoleContext";
 
 export const links = () => [
   { rel: "preconnect", href: "https://fonts.googleapis.com" },
@@ -31,9 +32,36 @@ interface Alert {
 }
 
 export function Layout({ children }: { children: React.ReactNode }) {
+  return (
+    <RoleProvider>
+      <LayoutContent>{children}</LayoutContent>
+    </RoleProvider>
+  );
+}
+
+function LayoutContent({ children }: { children: React.ReactNode }) {
+  const { role } = useRole();
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Module access configuration
+  const moduleAccess: Record<string, string[]> = {
+    admin: ["/", "/dashboard", "/inventory", "/orders", "/stockrequests", "/reports"],
+    purchasing: ["/", "/dashboard", "/inventory", "/stockrequests"],
+    sales: ["/", "/dashboard", "/inventory", "/orders"],
+    staff: ["/", "/inventory"],
+    manager: ["/", "/dashboard", "/reports"],
+  };
+
+  const navLinks = [
+    { to: "/", label: "Home" },
+    { to: "/dashboard", label: "Dashboard" },
+    { to: "/inventory", label: "Inventory" },
+    { to: "/orders", label: "Orders" },
+    { to: "/stockrequests", label: "Stock Requests" },
+    { to: "/reports", label: "Reports" },
+  ].filter((link) => !role || moduleAccess[role]?.includes(link.to));
 
   // Fetch low stock items from inventory
   useEffect(() => {
@@ -88,17 +116,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
       </head>
       <body className="bg-[#F5F5DC] text-gray-800 font-inter">
 
-        {/* Navigation Bar */}
+        {/* Navigation Bar - Only show if role is selected */}
+        {role && (
         <nav className="bg-[#0A400C] text-white p-4 flex items-center justify-between shadow-md">
           <div className="flex flex-wrap justify-center gap-6 flex-1">
-            {[
-              { to: "/", label: "Home" },
-              { to: "/dashboard", label: "Dashboard" },
-              { to: "/inventory", label: "Inventory" },
-              { to: "/orders", label: "Orders" },
-              { to: "/stockrequests", label: "Stock Requests" },
-              { to: "/reports", label: "Reports" },
-            ].map((link) => (
+            {navLinks.map((link) => (
               <NavLink
                 key={link.to}
                 to={link.to}
@@ -166,6 +188,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
             )}
           </div>
         </nav>
+        )}
 
         {/* Page Content */}
         <main className="flex-1 p-6 min-h-screen">{children}</main>
@@ -176,7 +199,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
     </html>
   );
 }
-
 
 export default function App() {
   return <Outlet />;

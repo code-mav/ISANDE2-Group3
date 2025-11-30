@@ -1,4 +1,5 @@
 import OrdersModule from "../components/ordersmodule";
+import { ProtectedRoute } from "~/components/ProtectedRoute";
 
 export function meta() {
   return [
@@ -8,5 +9,9 @@ export function meta() {
 }
 
 export default function OrdersRoute() {
-  return <OrdersModule />;
+  return (
+    <ProtectedRoute allowedModules={["orders"]}>
+      <OrdersModule />
+    </ProtectedRoute>
+  );
 }

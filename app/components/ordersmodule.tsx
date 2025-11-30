@@ -31,7 +31,7 @@ export default function OrdersModule() {
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [filterStatus, setFilterStatus] = useState("All");
   const [searchQuery, setSearchQuery] = useState("");
-  const [sortBy, setSortBy] = useState("newest"); 
+  const [sortBy, setSortBy] = useState("newest");
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
@@ -85,8 +85,7 @@ export default function OrdersModule() {
     setIsModalOpen(true);
   };
 
-  // Add item to order
-  // Add item to order — optionally specify warehouseCode to take from
+  // Add item to order — only used in create mode
   const addItemToOrder = (item: InventoryItem, warehouseCode?: string) => {
     const key = (sku: string, wh?: string) => `${sku}::${wh ?? ""}`;
     if (newOrder.items.find((i) => key(i.sku, i.warehouseCode) === key(item.sku, warehouseCode))) return;
@@ -116,14 +115,13 @@ export default function OrdersModule() {
     setNewOrder({ ...newOrder, items: updatedItems, totalAmount: total });
   };
 
-  // Update item quantity
+  // Update item quantity — used only in create mode
   const updateItemQuantity = (sku: string, quantity: number, warehouseCode?: string) => {
     const inventoryItem = inventory.find((i) => i.sku === sku);
     const available =
       typeof inventoryItem?.stock === "object" && inventoryItem?.stock
         ? (Object.values(inventoryItem.stock).map((v) => Number(v ?? 0)) as number[]).reduce((a, b) => a + b, 0)
         : Number(inventoryItem?.stock ?? 0);
-
 
     if (quantity > available) {
       alert(`Cannot set quantity beyond available stock (${available})`);
@@ -139,7 +137,7 @@ export default function OrdersModule() {
     setNewOrder({ ...newOrder, items: updatedItems, totalAmount: total });
   };
 
-  // Remove item from order
+  // Remove item from order — used only in create mode
   const removeItem = (sku: string, warehouseCode?: string) => {
     const updatedItems = newOrder.items.filter(
       (i) => !(i.sku === sku && (warehouseCode === undefined || i.warehouseCode === warehouseCode))
@@ -316,7 +314,7 @@ export default function OrdersModule() {
                 >
                   <td className="p-3">{index + 1}</td>
                   <td className="p-3 text-xs text-gray-500 font-mono">
-                    {o._id ? o._id.substring(0, 8) + '...' : "—"}
+                    {o._id ? o._id.substring(0, 8) + "..." : "—"}
                   </td>
                   <td className="p-3">{o.customerName}</td>
                   <td className="p-3">{o.orderDate}</td>
@@ -325,7 +323,17 @@ export default function OrdersModule() {
                     ₱{o.totalAmount.toFixed(2)}
                   </td>
                   <td className="p-3 text-center">
-                    <span className={`inline-block px-2 py-1 rounded-md text-xs font-semibold ${o.status === 'Completed' ? 'bg-green-100 text-green-700' : o.status === 'Processing' ? 'bg-yellow-100 text-yellow-700' : o.status === 'Cancelled' ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-700'}`}>
+                    <span
+                      className={`inline-block px-2 py-1 rounded-md text-xs font-semibold ${
+                        o.status === "Completed"
+                          ? "bg-green-100 text-green-700"
+                          : o.status === "Processing"
+                          ? "bg-yellow-100 text-yellow-700"
+                          : o.status === "Cancelled"
+                          ? "bg-red-100 text-red-700"
+                          : "bg-gray-100 text-gray-700"
+                      }`}
+                    >
                       {o.status}
                     </span>
                   </td>
@@ -373,15 +381,24 @@ export default function OrdersModule() {
               <label className="block text-sm font-medium text-[#0A400C]">
                 Customer Name
               </label>
-              <input
-                type="text"
-                value={newOrder.customerName}
-                onChange={(e) =>
-                  setNewOrder({ ...newOrder, customerName: e.target.value })
-                }
-                className="w-full p-2 border rounded-lg mt-1"
-                placeholder="e.g., Juan Dela Cruz"
-              />
+              {isEditMode ? (
+                <input
+                  type="text"
+                  value={newOrder.customerName}
+                  disabled
+                  className="w-full p-2 border rounded-lg mt-1 bg-gray-100 text-gray-600 cursor-not-allowed"
+                />
+              ) : (
+                <input
+                  type="text"
+                  value={newOrder.customerName}
+                  onChange={(e) =>
+                    setNewOrder({ ...newOrder, customerName: e.target.value })
+                  }
+                  className="w-full p-2 border rounded-lg mt-1"
+                  placeholder="e.g., Juan Dela Cruz"
+                />
+              )}
             </div>
 
             {/* Status */}
@@ -404,87 +421,94 @@ export default function OrdersModule() {
             </div>
 
             {/* Inventory selection */}
-            <div className="mb-4">
-              <label className="block text-sm font-medium text-[#0A400C]">
-                Select Items
-              </label>
-              <div className="flex flex-wrap gap-2 mt-2 max-h-32 overflow-y-auto">
-                {inventory.map((item) => {
-                  // if stock is an object map, show per-warehouse buttons
-                  if (typeof item.stock === "object" && item.stock) {
-                    return Object.entries(item.stock).map(([wh, v]) => (
+            {!isEditMode && (
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-[#0A400C]">
+                  Select Items
+                </label>
+                <div className="flex flex-wrap gap-2 mt-2 max-h-32 overflow-y-auto">
+                  {inventory.map((item) => {
+                    if (typeof item.stock === "object" && item.stock) {
+                      return Object.entries(item.stock).map(([wh, v]) => (
+                        <button
+                          key={`${item._id}-${wh}`}
+                          onClick={() => addItemToOrder(item, wh)}
+                          className="px-3 py-1 border rounded-lg bg-[#E0DCC7] hover:bg-[#D6D1B1]"
+                        >
+                          {item.name} ({wh}: {Number(v ?? 0)})
+                        </button>
+                      ));
+                    }
+                    return (
                       <button
-                        key={`${item._id}-${wh}`}
-                        onClick={() => addItemToOrder(item, wh)}
+                        key={item._id}
+                        onClick={() => addItemToOrder(item)}
                         className="px-3 py-1 border rounded-lg bg-[#E0DCC7] hover:bg-[#D6D1B1]"
                       >
-                        {item.name} ({wh}: {Number(v ?? 0)})
+                        {item.name} (₱{item.unitPrice?.toFixed(2) ?? 0})
                       </button>
-                    ));
-                  }
-                  return (
-                    <button
-                      key={item._id}
-                      onClick={() => addItemToOrder(item)}
-                      className="px-3 py-1 border rounded-lg bg-[#E0DCC7] hover:bg-[#D6D1B1]"
-                    >
-                      {item.name} (₱{item.unitPrice?.toFixed(2) ?? 0})
-                    </button>
-                  );
-                })}
+                    );
+                  })}
+                </div>
               </div>
-            </div>
+            )}
 
-            {/* Selected items */}
+            {/* Selected items*/}
             {newOrder.items.length > 0 && (
               <div className="mb-4">
                 <table className="w-full border text-sm">
                   <thead className="bg-[#F8F7F2]">
                     <tr>
-                      <th className="p-2">SKU</th>
-                      <th className="p-2">Item Name</th>
-                      <th className="p-2">Warehouse</th>
-                      <th className="p-2">Qty</th>
-                      <th className="p-2">Unit Price</th>
-                      <th className="p-2">Subtotal</th>
-                      <th className="p-2">Remove</th>
+                      <th className="p-2 text-left">SKU</th>
+                      <th className="p-2 text-left">Item Name</th>
+                      <th className="p-2 text-center">Warehouse</th>
+                      <th className="p-2 text-center">Qty</th>
+                      <th className="p-2 text-right">Unit Price</th>
+                      <th className="p-2 text-right">Subtotal</th>
+                      {!isEditMode && <th className="p-2 text-center">Remove</th>}
                     </tr>
                   </thead>
                   <tbody>
                     {newOrder.items.map((item) => (
                       <tr key={`${item.sku}-${item.warehouseCode ?? ""}`} className="border-t">
-                        <td className="p-2">{item.sku}</td>
-                        <td className="p-2">{item.name}</td>
-                        <td className="p-2">{item.warehouseCode ?? "—"}</td>
-                        <td className="p-2">
-                          <input
-                            type="number"
-                            min="1"
-                            value={item.quantity}
-                            onChange={(e) =>
-                              updateItemQuantity(
-                                item.sku,
-                                Number(e.target.value),
-                                item.warehouseCode
-                              )
-                            }
-                            className="w-16 border rounded p-1 text-center"
-                          />
+                        <td className="p-2 text-left">{item.sku}</td>
+                        <td className="p-2 text-left">{item.name}</td>
+                        <td className="p-2 text-center">{item.warehouseCode ?? "—"}</td>
+                        <td className="p-2 text-center">
+                          {isEditMode ? (
+                            <span>{item.quantity}</span>
+                          ) : (
+                            <input
+                              type="number"
+                              min="1"
+                              value={item.quantity}
+                              onChange={(e) =>
+                                updateItemQuantity(
+                                  item.sku,
+                                  Number(e.target.value),
+                                  item.warehouseCode
+                                )
+                              }
+                              className="w-16 border rounded p-1 text-center"
+                            />
+                          )}
                         </td>
-                        <td className="p-2">
+                        <td className="p-2 text-right">
                           ₱{item.unitPrice.toFixed(2)}
                         </td>
-                        <td className="p-2 font-semibold">
+                        <td className="p-2 text-right font-semibold">
                           ₱{item.subtotal.toFixed(2)}
                         </td>
-                        <td className="p-2">
-                          <button
-                            onClick={() => removeItem(item.sku, item.warehouseCode)}
-                            className="text-red-600 hover:underline text-sm"
-                          >
-                            Remove
-                          </button>
-                        </td>
+                        {!isEditMode && (
+                          <td className="p-2 text-center">
+                            <button
+                              onClick={() => removeItem(item.sku, item.warehouseCode)}
+                              className="text-red-600 hover:underline text-sm"
+                            >
+                              Remove
+                            </button>
+                          </td>
+                        )}
                       </tr>
                     ))}
                   </tbody>
@@ -502,7 +526,7 @@ export default function OrdersModule() {
                   onClick={() => setIsModalOpen(false)}
                   className="px-4 py-2 bg-[#E0DCC7] text-[#0A400C] rounded-lg hover:bg-[#D6D1B1]"
                 >
-                  Cancel
+                  Close
                 </button>
                 <button
                   onClick={saveOrder}
