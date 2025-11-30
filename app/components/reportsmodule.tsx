@@ -493,7 +493,7 @@ export default function ReportsModule() {
         yPosition += lineHeight;
         const totalAmtStr = String(orderSummary.totalAmount.toFixed(2));
         doc.text(
-          `Total Amount: P${totalAmtStr}`,
+          `Total Amount: PHP ${totalAmtStr}`,
           margin + 5,
           yPosition
         );
@@ -523,43 +523,102 @@ export default function ReportsModule() {
         doc.addPage();
         yPosition = margin;
       }
+      // Small helper to draw simple tables with wrapped cells and page breaks
+      const drawTable = (
+        headers: string[],
+        rows: string[][],
+        colWidths: number[],
+        opts?: { headerFontSize?: number; rowFontSize?: number }
+      ) => {
+        const startX = margin;
+        const headerFontSize = opts?.headerFontSize ?? 10;
+        const rowFontSize = opts?.rowFontSize ?? 8;
+        const rowLineHeight = 5; // approx line height for small font
 
-      // Orders section
+        const drawHeader = () => {
+          // adapt column widths to available page width
+          const pageWidth = doc.internal.pageSize.getWidth();
+          const gap = 4;
+          const totalDesired = colWidths.reduce((s, w) => s + w, 0) + gap * (colWidths.length - 1);
+          const availableWidth = pageWidth - margin * 2;
+          const scale = totalDesired > availableWidth ? availableWidth / totalDesired : 1;
+          const scaled = colWidths.map((w) => w * scale);
+
+          doc.setFontSize(headerFontSize);
+          doc.setFont("helvetica", "bold");
+          let x = startX;
+          let maxHeaderLines = 1;
+          headers.forEach((h, i) => {
+            const w = scaled[i];
+            const lines = doc.splitTextToSize(h, w);
+            if (lines.length > maxHeaderLines) maxHeaderLines = lines.length;
+            doc.text(lines, x, yPosition, { maxWidth: w });
+            x += w + gap;
+          });
+          doc.setFont("helvetica", "normal");
+          yPosition += maxHeaderLines * rowLineHeight + 4;
+
+          return scaled; // return scaled widths for row rendering
+        };
+
+        // initial header (and get scaled widths)
+        const scaledWidths = drawHeader();
+
+        rows.forEach((row) => {
+          // compute height needed for this row
+          doc.setFontSize(rowFontSize);
+          let cellLineCounts = row.map((cellText, i) => {
+            const lines = doc.splitTextToSize(cellText || "", scaledWidths[i]);
+            return lines.length;
+          });
+          const maxLines = Math.max(...cellLineCounts, 1);
+          const neededHeight = maxLines * rowLineHeight + 4;
+
+          if (yPosition + neededHeight > pageHeight - margin) {
+            doc.addPage();
+            yPosition = margin;
+            // redraw header on new page and update scaled widths
+            const newScaled = drawHeader();
+            // use newScaled for this page
+            scaledWidths.splice(0, scaledWidths.length, ...newScaled);
+          }
+
+          // draw cells
+          let x = startX;
+          row.forEach((cellText, i) => {
+            const w = scaledWidths[i];
+            const lines = doc.splitTextToSize(cellText || "", w);
+            doc.text(lines, x, yPosition, { maxWidth: w });
+            x += w + 4;
+          });
+
+          yPosition += neededHeight;
+        });
+      };
+
+      // Orders section as a table
       if (ordersInRange.length > 0) {
         doc.setFontSize(13);
         doc.setTextColor(10, 64, 12);
         doc.text("Orders in Period", margin, yPosition);
         yPosition += lineHeight + 2;
 
-        doc.setFontSize(9);
-        doc.setTextColor(0, 0, 0);
-        ordersInRange.slice(0, 5).forEach((o) => {
-          if (yPosition > pageHeight - 20) {
-            doc.addPage();
-            yPosition = margin;
-          }
-          const orderDate = sanitizeForPDF(o.orderDate || "—");
-          const orderId = sanitizeForPDF(o._id || "—");
-          const custName = sanitizeForPDF(o.customerName || "—");
-          const orderStatus = sanitizeForPDF(o.status || "—");
-          const orderAmt = sanitizeForPDF(typeof o.totalAmount === "number" ? o.totalAmount.toFixed(2) : "0.00");
-          doc.text(
-            `${orderDate} | ${orderId} | ${custName} | ${orderStatus} | P${orderAmt}`,
-            margin,
-            yPosition,
-            { maxWidth: maxWidth }
-          );
-          yPosition += lineHeight;
-        });
-        if (ordersInRange.length > 5) {
-          const moreOrders = String(ordersInRange.length - 5);
-          doc.text(`... and ${moreOrders} more orders`, margin, yPosition);
-          yPosition += lineHeight;
-        }
+        const headers = ["Date", "Order ID", "Customer", "Status", "Total (PHP)"];
+        const colWidths = [30, 40, 60, 30, 30];
+        const rows = ordersInRange.map((o) => [
+          sanitizeForPDF(o.orderDate || "—"),
+          sanitizeForPDF(o._id || "—"),
+          sanitizeForPDF(o.customerName || "—"),
+          sanitizeForPDF(o.status || "—"),
+          sanitizeForPDF(typeof o.totalAmount === "number" ? o.totalAmount.toFixed(2) : "0.00"),
+        ]);
+
+        drawTable(headers, rows, colWidths, { headerFontSize: 10, rowFontSize: 9 });
+
         yPosition += 3;
       }
 
-      // Stock Requests section
+      // Stock Requests section as a table
       if (stockRequestsInRange.length > 0) {
         if (yPosition > pageHeight - 40) {
           doc.addPage();
@@ -571,35 +630,22 @@ export default function ReportsModule() {
         doc.text("Stock Requests in Period", margin, yPosition);
         yPosition += lineHeight + 2;
 
-        doc.setFontSize(9);
-        doc.setTextColor(0, 0, 0);
-        stockRequestsInRange.slice(0, 5).forEach((sr) => {
-          if (yPosition > pageHeight - 20) {
-            doc.addPage();
-            yPosition = margin;
-          }
-          const srDate = sanitizeForPDF(sr.date || "—");
-          const srId = sanitizeForPDF(sr.requestId || "—");
-          const srRequester = sanitizeForPDF(sr.requester || "—");
-          const srWarehouse = sanitizeForPDF(sr.warehouse || "—");
-          const srStatus = sanitizeForPDF(sr.status || "—");
-          doc.text(
-            `${srDate} | ${srId} | ${srRequester} | ${srWarehouse} | ${srStatus}`,
-            margin,
-            yPosition,
-            { maxWidth: maxWidth }
-          );
-          yPosition += lineHeight;
-        });
-        if (stockRequestsInRange.length > 5) {
-          const moreCount = String(stockRequestsInRange.length - 5);
-          doc.text(`... and ${moreCount} more requests`, margin, yPosition);
-          yPosition += lineHeight;
-        }
+        const srHeaders = ["Date", "Request ID", "Requester", "Warehouse", "Status"];
+        const srColWidths = [30, 45, 55, 40, 20];
+        const srRows = stockRequestsInRange.map((sr) => [
+          sanitizeForPDF(sr.date || "—"),
+          sanitizeForPDF(sr.requestId || "—"),
+          sanitizeForPDF(sr.requester || "—"),
+          sanitizeForPDF(sr.warehouse || "—"),
+          sanitizeForPDF(sr.status || "—"),
+        ]);
+
+        drawTable(srHeaders, srRows, srColWidths, { headerFontSize: 10, rowFontSize: 9 });
+
         yPosition += 3;
       }
 
-      // Inventory items section
+      // Inventory items section as a table
       if (items.length > 0) {
         if (yPosition > pageHeight - 40) {
           doc.addPage();
@@ -613,6 +659,7 @@ export default function ReportsModule() {
 
         doc.setFontSize(8);
         doc.setTextColor(0, 0, 0);
+
         const sortedItems = items
           .slice()
           .sort((a, b) => {
@@ -620,27 +667,29 @@ export default function ReportsModule() {
             const tB = new Date(b.updatedAt || b.createdAt || 0).getTime();
             return tB - tA;
           });
-        
-        sortedItems.forEach((it, index) => {
-          if (yPosition > pageHeight - 15) {
-            doc.addPage();
-            yPosition = margin;
-          }
+
+        const headers = ["#", "SKU", "Item Name", "Category", "Warehouse", "Stock", "Unit Price (PHP)", "Status", "Updated"];
+        // column widths should sum roughly to maxWidth — increased warehouse column to avoid wrapping
+        const colWidths = [8, 20, 48, 18, 28, 18, 14, 16, 26];
+
+        const rows = sortedItems.map((it, idx) => {
           const stockNum = totalStock(it.stock);
           const statusText = statusFromStock(stockNum, it.category);
-          const itemSku = sanitizeForPDF(it.sku || "—");
-          const itemName = sanitizeForPDF(it.name || "—");
-          const itemCat = sanitizeForPDF(it.category || "—");
-          const itemStock = sanitizeForPDF(formatStockDisplay(it.stock));
-          const itemPrice = sanitizeForPDF(it.unitPrice?.toFixed(2) ?? "0.00");
-          doc.text(
-            `${itemSku} | ${itemName} | ${itemCat} | Stock: ${itemStock} | P${itemPrice} | ${statusText}`,
-            margin,
-            yPosition,
-            { maxWidth: maxWidth }
-          );
-          yPosition += lineHeight;
+          const updated = it.updatedAt || it.createdAt || "—";
+          return [
+            String(idx + 1),
+            sanitizeForPDF(it.sku || "—"),
+            sanitizeForPDF(it.name || "—"),
+            sanitizeForPDF(it.category || "—"),
+            sanitizeForPDF(it.warehouseLoc || "—"),
+            sanitizeForPDF(formatStockDisplay(it.stock)),
+            sanitizeForPDF(it.unitPrice?.toFixed(2) ?? "0.00"),
+            sanitizeForPDF(statusText),
+            sanitizeForPDF(updated ? new Date(updated).toLocaleString("en-PH") : "—"),
+          ];
         });
+
+        drawTable(headers, rows, colWidths, { headerFontSize: 9, rowFontSize: 8 });
       }
 
       // Save PDF
