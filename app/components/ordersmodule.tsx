@@ -28,22 +28,13 @@ interface InventoryItem {
   unitPrice?: number;
 }
 
-// Helper to display order date (prefer createdAt from DB)
-function formatOrderDate(order: Order): string {
-  if (order.createdAt) {
-    const d = new Date(order.createdAt);
-    if (!isNaN(d.getTime())) {
-      // Show as YYYY-MM-DD in PH locale
-      return d.toLocaleDateString("en-PH", {
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit",
-      });
-    }
-  }
-
-  // Fallback: whatever orderDate string is
-  return order.orderDate;
+// 🔹 Helper: get local date as "YYYY-MM-DD"
+function getLocalDateString(): string {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
 }
 
 export default function OrdersModule() {
@@ -57,9 +48,11 @@ export default function OrdersModule() {
   const [isEditMode, setIsEditMode] = useState(false);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
 
+  const todayLocal = getLocalDateString();
+
   const [newOrder, setNewOrder] = useState<Order>({
     customerName: "",
-    orderDate: new Date().toISOString().split("T")[0],
+    orderDate: todayLocal,
     items: [],
     totalAmount: 0,
     status: "Pending",
@@ -89,7 +82,7 @@ export default function OrdersModule() {
     setSelectedOrderId(null);
     setNewOrder({
       customerName: "",
-      orderDate: new Date().toISOString().split("T")[0],
+      orderDate: todayLocal,
       items: [],
       totalAmount: 0,
       status: "Pending",
@@ -189,6 +182,12 @@ export default function OrdersModule() {
   const saveOrder = async () => {
     if (!newOrder.customerName || newOrder.items.length === 0) {
       alert("Please add a customer name and at least one item.");
+      return;
+    }
+
+
+    if (newOrder.orderDate < todayLocal) {
+      alert("Order date cannot be earlier than today.");
       return;
     }
 
@@ -366,8 +365,7 @@ export default function OrdersModule() {
                     {o._id ? o._id.substring(0, 8) + "..." : "—"}
                   </td>
                   <td className="p-3">{o.customerName}</td>
-                  {/* ✅ Use formatted date */}
-                  <td className="p-3">{formatOrderDate(o)}</td>
+                  <td className="p-3">{o.orderDate}</td>
                   <td className="p-3">{o.items.length} item(s)</td>
                   <td className="p-3 text-right font-semibold">
                     ₱{o.totalAmount.toFixed(2)}
@@ -396,7 +394,7 @@ export default function OrdersModule() {
                     </button>
 
                     <button
-                      onClick={() => deleteOrder(o._id!)}
+                      onClick={() => o._id && deleteOrder(o._id)}
                       className="px-2 py-1 bg-red-600 text-white rounded-md text-sm hover:bg-red-700"
                     >
                       🗑️
@@ -454,6 +452,29 @@ export default function OrdersModule() {
               )}
             </div>
 
+            {/* Order Date */}
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-[#0A400C]">
+                Order Date
+              </label>
+              <input
+                type="date"
+                value={newOrder.orderDate}
+                min={todayLocal}
+                onChange={(e) =>
+                  setNewOrder({
+                    ...newOrder,
+                    orderDate: e.target.value,
+                  })
+                }
+                className="w-full p-2 border rounded-lg mt-1"
+                disabled={isEditMode} 
+              />
+              <p className="text-xs text-[#819067] mt-1">
+                You cannot set an order date earlier than today.
+              </p>
+            </div>
+
             {/* Status */}
             <div className="mb-4">
               <label className="block text-sm font-medium text-[#0A400C]">
@@ -461,10 +482,11 @@ export default function OrdersModule() {
               </label>
 
               {isEditMode ? (
-                // Editable only when editing
                 <select
                   value={newOrder.status}
-                  onChange={(e) => setNewOrder({ ...newOrder, status: e.target.value })}
+                  onChange={(e) =>
+                    setNewOrder({ ...newOrder, status: e.target.value })
+                  }
                   className="w-full p-2 border rounded-lg mt-1"
                 >
                   <option>Pending</option>
@@ -473,7 +495,6 @@ export default function OrdersModule() {
                   <option>Cancelled</option>
                 </select>
               ) : (
-                // Fixed “Pending” during creation
                 <input
                   type="text"
                   value="Pending"
