@@ -16,6 +16,8 @@ interface Order {
   items: OrderItem[];
   totalAmount: number;
   status: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 interface InventoryItem {
@@ -88,11 +90,19 @@ export default function OrdersModule() {
   // Add item to order — only used in create mode
   const addItemToOrder = (item: InventoryItem, warehouseCode?: string) => {
     const key = (sku: string, wh?: string) => `${sku}::${wh ?? ""}`;
-    if (newOrder.items.find((i) => key(i.sku, i.warehouseCode) === key(item.sku, warehouseCode))) return;
+    if (
+      newOrder.items.find(
+        (i) => key(i.sku, i.warehouseCode) === key(item.sku, warehouseCode)
+      )
+    )
+      return;
 
     const itemAvailable =
       typeof item.stock === "object" && item.stock
-        ? (Object.values(item.stock).map((v) => Number(v ?? 0)) as number[]).reduce((a, b) => a + b, 0)
+        ? (Object.values(item.stock).map((v) => Number(v ?? 0)) as number[]).reduce(
+            (a, b) => a + b,
+            0
+          )
         : Number(item.stock ?? 0);
 
     if (itemAvailable <= 0) {
@@ -116,11 +126,18 @@ export default function OrdersModule() {
   };
 
   // Update item quantity — used only in create mode
-  const updateItemQuantity = (sku: string, quantity: number, warehouseCode?: string) => {
+  const updateItemQuantity = (
+    sku: string,
+    quantity: number,
+    warehouseCode?: string
+  ) => {
     const inventoryItem = inventory.find((i) => i.sku === sku);
     const available =
       typeof inventoryItem?.stock === "object" && inventoryItem?.stock
-        ? (Object.values(inventoryItem.stock).map((v) => Number(v ?? 0)) as number[]).reduce((a, b) => a + b, 0)
+        ? (Object.values(inventoryItem.stock).map((v) => Number(v ?? 0)) as number[]).reduce(
+            (a, b) => a + b,
+            0
+          )
         : Number(inventoryItem?.stock ?? 0);
 
     if (quantity > available) {
@@ -140,7 +157,11 @@ export default function OrdersModule() {
   // Remove item from order — used only in create mode
   const removeItem = (sku: string, warehouseCode?: string) => {
     const updatedItems = newOrder.items.filter(
-      (i) => !(i.sku === sku && (warehouseCode === undefined || i.warehouseCode === warehouseCode))
+      (i) =>
+        !(
+          i.sku === sku &&
+          (warehouseCode === undefined || i.warehouseCode === warehouseCode)
+        )
     );
     const total = updatedItems.reduce((sum, i) => sum + i.subtotal, 0);
     setNewOrder({ ...newOrder, items: updatedItems, totalAmount: total });
@@ -188,21 +209,31 @@ export default function OrdersModule() {
     }
   };
 
-  // Sort orders
+  // Sort orders (use createdAt if available for "newest")
   const sortedOrders = [...orders].sort((a, b) => {
     if (sortBy === "name") return a.customerName.localeCompare(b.customerName);
     if (sortBy === "total") return b.totalAmount - a.totalAmount;
-    if (sortBy === "newest")
-      return new Date(b.orderDate).getTime() - new Date(a.orderDate).getTime();
+    if (sortBy === "newest") {
+      const dateA = new Date(a.createdAt || a.orderDate).getTime();
+      const dateB = new Date(b.createdAt || b.orderDate).getTime();
+      return dateB - dateA;
+    }
     return 0;
   });
 
-  // Filter + Search
+  // Filter + Search (by customer OR Ref ID)
   const filteredOrders = sortedOrders
     .filter((o) => (filterStatus === "All" ? true : o.status === filterStatus))
-    .filter((o) =>
-      o.customerName.toLowerCase().includes(searchQuery.toLowerCase())
-    );
+    .filter((o) => {
+      const q = searchQuery.toLowerCase().trim();
+      if (!q) return true;
+
+      const customerMatch = o.customerName.toLowerCase().includes(q);
+      const refId = o._id ? o._id.toLowerCase() : "";
+      const refMatch = refId.includes(q);
+
+      return customerMatch || refMatch;
+    });
 
   // Status color mapping
   const getStatusColor = (status: string) => {
@@ -240,7 +271,7 @@ export default function OrdersModule() {
         <div className="flex-1 min-w-[200px]">
           <input
             type="text"
-            placeholder="Search by customer..."
+            placeholder="Search by customer or Ref ID..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full p-2 border rounded-lg"
@@ -393,7 +424,10 @@ export default function OrdersModule() {
                   type="text"
                   value={newOrder.customerName}
                   onChange={(e) =>
-                    setNewOrder({ ...newOrder, customerName: e.target.value })
+                    setNewOrder({
+                      ...newOrder,
+                      customerName: e.target.value,
+                    })
                   }
                   className="w-full p-2 border rounded-lg mt-1"
                   placeholder="e.g., Juan Dela Cruz"
@@ -406,18 +440,28 @@ export default function OrdersModule() {
               <label className="block text-sm font-medium text-[#0A400C]">
                 Status
               </label>
-              <select
-                value={newOrder.status}
-                onChange={(e) =>
-                  setNewOrder({ ...newOrder, status: e.target.value })
-                }
-                className="w-full p-2 border rounded-lg mt-1"
-              >
-                <option>Pending</option>
-                <option>Processing</option>
-                <option>Completed</option>
-                <option>Cancelled</option>
-              </select>
+
+              {isEditMode ? (
+                // Editable only when editing
+                <select
+                  value={newOrder.status}
+                  onChange={(e) => setNewOrder({ ...newOrder, status: e.target.value })}
+                  className="w-full p-2 border rounded-lg mt-1"
+                >
+                  <option>Pending</option>
+                  <option>Processing</option>
+                  <option>Completed</option>
+                  <option>Cancelled</option>
+                </select>
+              ) : (
+                // Fixed “Pending” during creation
+                <input
+                  type="text"
+                  value="Pending"
+                  disabled
+                  className="w-full p-2 border rounded-lg mt-1 bg-gray-100 text-gray-600 cursor-not-allowed"
+                />
+              )}
             </div>
 
             {/* Inventory selection */}
@@ -465,15 +509,22 @@ export default function OrdersModule() {
                       <th className="p-2 text-center">Qty</th>
                       <th className="p-2 text-right">Unit Price</th>
                       <th className="p-2 text-right">Subtotal</th>
-                      {!isEditMode && <th className="p-2 text-center">Remove</th>}
+                      {!isEditMode && (
+                        <th className="p-2 text-center">Remove</th>
+                      )}
                     </tr>
                   </thead>
                   <tbody>
                     {newOrder.items.map((item) => (
-                      <tr key={`${item.sku}-${item.warehouseCode ?? ""}`} className="border-t">
+                      <tr
+                        key={`${item.sku}-${item.warehouseCode ?? ""}`}
+                        className="border-t"
+                      >
                         <td className="p-2 text-left">{item.sku}</td>
                         <td className="p-2 text-left">{item.name}</td>
-                        <td className="p-2 text-center">{item.warehouseCode ?? "—"}</td>
+                        <td className="p-2 text-center">
+                          {item.warehouseCode ?? "—"}
+                        </td>
                         <td className="p-2 text-center">
                           {isEditMode ? (
                             <span>{item.quantity}</span>
@@ -502,7 +553,9 @@ export default function OrdersModule() {
                         {!isEditMode && (
                           <td className="p-2 text-center">
                             <button
-                              onClick={() => removeItem(item.sku, item.warehouseCode)}
+                              onClick={() =>
+                                removeItem(item.sku, item.warehouseCode)
+                              }
                               className="text-red-600 hover:underline text-sm"
                             >
                               Remove
