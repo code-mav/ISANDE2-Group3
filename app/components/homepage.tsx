@@ -6,7 +6,7 @@ const ROLES: { value: UserRole; label: string; description: string }[] = [
   { value: "purchasing", label: "Purchasing", description: "Dashboard, Inventory, Stock Requests" },
   { value: "sales", label: "Sales", description: "Dashboard, Inventory, Orders" },
   { value: "staff", label: "Staff", description: "Inventory access only" },
-  { value: "manager", label: "Manager", description: "Dashboard, Reports" },
+  { value: "manager", label: "Manager", description: "Dashboard, Inventory, Reports" },
 ];
 
 export default function HomePage() {
@@ -64,7 +64,12 @@ export default function HomePage() {
         ) : (
           <div className="mt-10">
             <div className="bg-[#F9F8F4] rounded-lg p-6 mb-6">
-              <p className="text-[#0A400C] font-semibold">Current Role: <span className="text-green-700">{role.charAt(0).toUpperCase() + role.slice(1)}</span></p>
+              <p className="text-[#0A400C] font-semibold">
+                Current Role:{" "}
+                <span className="text-green-700">
+                  {role.charAt(0).toUpperCase() + role.slice(1)}
+                </span>
+              </p>
             </div>
             <div className="flex justify-center gap-6">
               <button
