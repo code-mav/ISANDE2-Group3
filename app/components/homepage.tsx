@@ -15,7 +15,6 @@ export default function HomePage() {
 
   const handleRoleSelect = (selectedRole: UserRole) => {
     setRole(selectedRole);
-    navigate("/dashboard");
   };
 
   return (
