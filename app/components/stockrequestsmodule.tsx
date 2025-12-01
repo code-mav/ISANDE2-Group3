@@ -118,7 +118,7 @@ export default function StockRequestsModule() {
   const openCreate = () => {
     setIsEditMode(false);
     setSelectedId(null);
-    setForm(emptyForm());
+    setForm(emptyForm()); // ensures status = "Pending"
     setIsModalOpen(true);
   };
 
@@ -205,6 +205,7 @@ export default function StockRequestsModule() {
     const payload: any = {
       ...form,
       items: mergedItems,
+      // DeliveredAt only meaningful if status is already Delivered (edit mode)
       deliveredAt:
         form.status === "Delivered"
           ? new Date().toISOString()
@@ -577,24 +578,36 @@ export default function StockRequestsModule() {
                 )}
               </div>
 
-              {/* Status (always editable) */}
+              {/* Status: fixed to Pending on create, editable on edit */}
               <div>
                 <label className="block text-sm font-medium text-[#0A400C]">
                   Status
                 </label>
-                <select
-                  value={form.status}
-                  onChange={(e) =>
-                    setForm({ ...form, status: e.target.value as any })
-                  }
-                  className="w-full p-2 border rounded-lg mt-1"
-                >
-                  {STATUSES.map((s) => (
-                    <option key={s} value={s}>
-                      {s}
-                    </option>
-                  ))}
-                </select>
+                {isEditMode ? (
+                  <select
+                    value={form.status}
+                    onChange={(e) =>
+                      setForm({
+                        ...form,
+                        status: e.target.value as StockRequest["status"],
+                      })
+                    }
+                    className="w-full p-2 border rounded-lg mt-1"
+                  >
+                    {STATUSES.map((s) => (
+                      <option key={s} value={s}>
+                        {s}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    type="text"
+                    value="Pending"
+                    disabled
+                    className="w-full p-2 border rounded-lg mt-1 bg-gray-100 text-gray-600 cursor-not-allowed"
+                  />
+                )}
               </div>
 
               {/* Note (always editable) */}
@@ -657,15 +670,22 @@ export default function StockRequestsModule() {
                       <th className="p-2 text-center">Warehouse</th>
                       <th className="p-2 text-center">Qty</th>
                       <th className="p-2 text-right">Available</th>
-                      {!isEditMode && <th className="p-2 text-center">Remove</th>}
+                      {!isEditMode && (
+                        <th className="p-2 text-center">Remove</th>
+                      )}
                     </tr>
                   </thead>
                   <tbody>
-                    {form.items.map(it => (
-                      <tr key={`${it.sku}-${it.warehouseCode}`} className="border-t">
+                    {form.items.map((it) => (
+                      <tr
+                        key={`${it.sku}-${it.warehouseCode}`}
+                        className="border-t"
+                      >
                         <td className="p-2 text-left">{it.sku}</td>
                         <td className="p-2 text-left">{it.name}</td>
-                        <td className="p-2 text-center">{it.warehouseCode}</td>
+                        <td className="p-2 text-center">
+                          {it.warehouseCode}
+                        </td>
                         <td className="p-2 text-center">
                           {isEditMode ? (
                             <span>{it.qty}</span>
@@ -675,7 +695,11 @@ export default function StockRequestsModule() {
                               min={1}
                               value={it.qty}
                               onChange={(e) =>
-                                updateQty(it.sku, it.warehouseCode, Number(e.target.value || 1))
+                                updateQty(
+                                  it.sku,
+                                  it.warehouseCode,
+                                  Number(e.target.value || 1)
+                                )
                               }
                               className="w-20 p-1 border rounded text-center"
                             />
@@ -687,8 +711,12 @@ export default function StockRequestsModule() {
                             if (!inv) return 0;
                             const totalStocks =
                               typeof inv.stock === "object" && inv.stock
-                                ? (Object.values(inv.stock).map((v) => Number(v ?? 0)) as number[])
-                                    .reduce((a, b) => a + b, 0)
+                                ? (Object.values(inv.stock).map(
+                                    (v) => Number(v ?? 0)
+                                  ) as number[]).reduce(
+                                    (a, b) => a + b,
+                                    0
+                                  )
                                 : Number(inv.stock ?? 0);
                             return totalStocks;
                           })()}
@@ -696,7 +724,9 @@ export default function StockRequestsModule() {
                         {!isEditMode && (
                           <td className="p-2 text-center">
                             <button
-                              onClick={() => removeItem(it.sku, it.warehouseCode)}
+                              onClick={() =>
+                                removeItem(it.sku, it.warehouseCode)
+                              }
                               className="px-2 py-1 text-red-600"
                             >
                               ✖️
