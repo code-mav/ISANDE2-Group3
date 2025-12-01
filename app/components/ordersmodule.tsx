@@ -28,6 +28,24 @@ interface InventoryItem {
   unitPrice?: number;
 }
 
+// Helper to display order date (prefer createdAt from DB)
+function formatOrderDate(order: Order): string {
+  if (order.createdAt) {
+    const d = new Date(order.createdAt);
+    if (!isNaN(d.getTime())) {
+      // Show as YYYY-MM-DD in PH locale
+      return d.toLocaleDateString("en-PH", {
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      });
+    }
+  }
+
+  // Fallback: whatever orderDate string is
+  return order.orderDate;
+}
+
 export default function OrdersModule() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
@@ -348,7 +366,8 @@ export default function OrdersModule() {
                     {o._id ? o._id.substring(0, 8) + "..." : "—"}
                   </td>
                   <td className="p-3">{o.customerName}</td>
-                  <td className="p-3">{o.orderDate}</td>
+                  {/* ✅ Use formatted date */}
+                  <td className="p-3">{formatOrderDate(o)}</td>
                   <td className="p-3">{o.items.length} item(s)</td>
                   <td className="p-3 text-right font-semibold">
                     ₱{o.totalAmount.toFixed(2)}
