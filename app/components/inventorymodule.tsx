@@ -34,6 +34,8 @@ export default function InventoryModule() {
   const [isEditMode, setIsEditMode] = useState(false);
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
 
+  const { role } = useRole();
+
   const [newItem, setNewItem] = useState<Item>({
     sku: "",
     name: "",
@@ -159,7 +161,6 @@ export default function InventoryModule() {
   // Delete item
   const deleteItem = async (id: string | undefined) => {
     if (!id) return;
-    const { role } = useRole();
     if (role !== "admin" && role !== "manager") {
       alert("You do not have permission to delete items.");
       return;
@@ -406,12 +407,14 @@ export default function InventoryModule() {
                     >
                       ✏️
                     </button>
-                    <button
-                      onClick={() => deleteItem(item._id)}
-                      className="px-2 py-1 bg-red-600 text-white rounded-md text-sm hover:bg-red-700 transition"
-                    >
-                      🗑️
-                    </button>
+                    {(role === "admin" || role === "manager") && (
+                      <button
+                        onClick={() => deleteItem(item._id)}
+                        className="px-2 py-1 bg-red-600 text-white rounded-md text-sm hover:bg-red-700 transition"
+                      >
+                        🗑️
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))
