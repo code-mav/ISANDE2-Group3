@@ -51,7 +51,8 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
     purchasing: ["/", "/dashboard", "/inventory", "/stockrequests"],
     sales: ["/", "/dashboard", "/inventory", "/orders"],
     staff: ["/", "/inventory"],
-    manager: ["/", "/dashboard", "/reports"],
+    manager: ["/", "/dashboard", "/inventory", "/reports"],
+
   };
 
   const navLinks = [

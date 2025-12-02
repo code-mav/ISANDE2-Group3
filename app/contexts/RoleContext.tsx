@@ -69,7 +69,7 @@ export function useHasAccess(module: string): boolean {
     purchasing: ["dashboard", "inventory", "stockrequests"],
     sales: ["dashboard", "inventory", "orders"],
     staff: ["inventory"],
-    manager: ["dashboard", "reports"],
+    manager: ["dashboard", "inventory", "reports"],
   };
 
   return moduleAccess[role]?.includes(module) ?? false;
@@ -100,6 +100,7 @@ export function useAccessibleModules() {
     staff: [{ to: "/inventory", label: "Inventory" }],
     manager: [
       { to: "/dashboard", label: "Dashboard" },
+      { to: "/inventory", label: "Inventory" },
       { to: "/reports", label: "Reports" },
     ],
   };

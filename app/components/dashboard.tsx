@@ -1,9 +1,7 @@
 // components/dashboard.tsx
-
 import { useEffect, useState } from "react";
 import StockLevelBarChart from "./stockLevelBarChart";
 import WarehouseStockPie from "./warehouseStockPie";
-
 
 interface Item {
   _id?: string;
@@ -16,21 +14,18 @@ interface Item {
   status: string;
 }
 
-// Helper to compute total stock across all warehouses
 function totalStock(stockValue: number | Record<string, number>): number {
   if (typeof stockValue === "number") return stockValue;
-  return (Object.values(stockValue).map((v) => Number(v ?? 0)) as number[]).reduce((a, b) => a + b, 0);
+  return (Object.values(stockValue).map((v) => Number(v ?? 0)) as number[]).reduce(
+    (a, b) => a + b,
+    0
+  );
 }
 
-// Helper to get low stock threshold by category
 function getLowStockThreshold(category: string): number {
-  if (category === "Spare Parts" || category === "Tools") {
-    return 15;
-  } else if (category === "Miscellaneous") {
-    return 10;
-  }
-  // Default for Machinery and Electrical
-  return 5;
+  if (category === "Spare Parts" || category === "Tools") return 15;
+  if (category === "Miscellaneous") return 10;
+  return 5; // default
 }
 
 export default function Dashboard() {
@@ -38,8 +33,8 @@ export default function Dashboard() {
   const [stockRequests, setStockRequests] = useState<any[]>([]);
   const [orders, setOrders] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [activeTile, setActiveTile] = useState<string | null>(null);
 
-  // Fetch items from API
   const fetchItems = async () => {
     try {
       const res = await fetch("/api/items");
@@ -50,7 +45,6 @@ export default function Dashboard() {
     }
   };
 
-  // Fetch stock requests
   const fetchStockRequests = async () => {
     try {
       const res = await fetch("/api/stockrequests");
@@ -61,7 +55,6 @@ export default function Dashboard() {
     }
   };
 
-  // Fetch orders
   const fetchOrders = async () => {
     try {
       const res = await fetch("/api/orders");
@@ -78,15 +71,60 @@ export default function Dashboard() {
     Promise.all([fetchItems(), fetchStockRequests(), fetchOrders()]);
   }, []);
 
-  // Calculate stats
-  const totalItems = items.length;
-  const lowStockItems = items.filter((item) => {
+  // Calculations
+  const lowStockList = items.filter((item) => {
     const stock = totalStock(item.stock);
     const threshold = getLowStockThreshold(item.category);
     return stock > 0 && stock <= threshold;
-  }).length;
-  const incomingShipments = stockRequests.filter((sr) => sr.status === "Pending" || sr.status === "In Transit").length;
-  const pendingOrders = orders.filter((o) => o.status === "Pending" || o.status === "Processing").length;
+  });
+
+  const incomingShipmentList = stockRequests.filter(
+    (sr) => sr.status === "Pending" || sr.status === "In Transit"
+  );
+
+  const pendingOrderList = orders.filter(
+    (o) => o.status === "Pending" || o.status === "Processing"
+  );
+
+  const totalItems = items.length;
+  const lowStockItems = lowStockList.length;
+  const incomingShipments = incomingShipmentList.length;
+  const pendingOrders = pendingOrderList.length;
+
+  const summaryTiles = [
+    {
+      key: "lowStock",
+      title: "Low Stock Items",
+      value: lowStockItems,
+      details: lowStockList.map(
+        (it: Item) => `${it.name} (${it.sku}) — Total: ${totalStock(it.stock)}`
+      ),
+    },
+    {
+      key: "incoming",
+      title: "Incoming Shipments",
+      value: incomingShipments,
+      details: incomingShipmentList.map(
+        (r: any) =>
+          `Request ${r.requestId || r._id?.slice(0, 6)} — ${r.items.length} item(s) — ${r.status}`
+      ),
+    },
+    {
+      key: "pendingOrders",
+      title: "Pending Orders",
+      value: pendingOrders,
+      details: pendingOrderList.map(
+        (o: any) =>
+          `Order ${o._id?.slice(0, 6)} — ${o.items.length} item(s) — ${o.status}`
+      ),
+    },
+    {
+      key: "totalItems",
+      title: "Total Items",
+      value: totalItems,
+      details: [`There are currently ${totalItems} unique SKUs in inventory.`],
+    },
+  ];
 
   return (
     <div className="p-6 min-h-screen bg-[#FAF8F0]">
@@ -97,33 +135,47 @@ export default function Dashboard() {
         </p>
       </div>
 
-      {/* Summary Tiles */}
+      {/* SUMMARY CARDS */}
       {isLoading ? (
         <p className="text-center text-[#819067] italic">Loading data...</p>
       ) : (
         <div className="grid grid-cols-4 gap-6 mt-6">
-          {[
-            { title: "Total Items", value: totalItems.toString() },
-            { title: "Low Stock Items", value: lowStockItems.toString() },
-            { title: "Incoming Shipments", value: incomingShipments.toString() },
-            { title: "Pending Orders", value: pendingOrders.toString() },
-          ].map((tile, i) => (
-            <div
-              key={i}
-              className="bg-white p-6 rounded-2xl shadow-lg text-center border border-[#E0DCC7]"
-            >
-              <h2 className="text-xl font-semibold text-[#0A400C]">
-                {tile.title}
-              </h2>
-              <p className="text-3xl font-bold text-[#819067] mt-2">
-                {tile.value}
-              </p>
-            </div>
-          ))}
+          {summaryTiles.map((tile) => {
+            const isOpen = activeTile === tile.key;
+
+            return (
+              <div
+                key={tile.key}
+                onClick={() => setActiveTile(isOpen ? null : tile.key)}
+                className="relative bg-white p-6 rounded-2xl shadow-lg text-center border border-[#E0DCC7] cursor-pointer hover:shadow-xl transition"
+              >
+                <h2 className="text-xl font-semibold text-[#0A400C]">{tile.title}</h2>
+                <p className="text-3xl font-bold text-[#819067] mt-2">{tile.value}</p>
+                <p className="mt-1 text-xs text-[#939f76]">
+                  Click for details
+                </p>
+
+                {/* CLICK-OPEN INFO PANEL */}
+                {isOpen && (
+                  <div className="absolute left-1/2 top-full mt-3 w-72 -translate-x-1/2 rounded-lg bg-[#0A400C] px-4 py-3 text-white text-[12px] shadow-xl z-50 max-h-64 overflow-y-auto">
+                    {tile.details.length === 0 ? (
+                      <p>No additional details.</p>
+                    ) : (
+                      <ul className="space-y-1">
+                        {tile.details.map((line, idx) => (
+                          <li key={idx}>• {line}</li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
 
-      {/* Charts */}
+      {/* CHARTS */}
       <div className="grid grid-cols-2 gap-6 mt-8">
         <div className="bg-white rounded-2xl shadow p-6">
           <h2 className="font-semibold text-[#0A400C] mb-4">Stock Levels by Item</h2>
@@ -133,6 +185,7 @@ export default function Dashboard() {
             <StockLevelBarChart items={items} />
           )}
         </div>
+
         <div className="bg-white rounded-2xl shadow p-6">
           <h2 className="font-semibold text-[#0A400C] mb-4">Stock by Warehouse</h2>
           {isLoading ? (

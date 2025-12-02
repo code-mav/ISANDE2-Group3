@@ -62,7 +62,7 @@ async function logStockRequestMeta(
     stockBefore: null,
     stockAfter: null,
     delta: null,
-    note: requester ? `${note} (by ${requester})` : note,
+    note: requester ? `${note} (checked by ${requester})` : note,
     orderId: null,
     stockRequestId: requestId,
   });

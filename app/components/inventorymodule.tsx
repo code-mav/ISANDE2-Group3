@@ -308,100 +308,116 @@ export default function InventoryModule() {
         </button>
       </div>
 
+      {/* Low stock legend*/}
+      <div className="mt-2 text-xs text-[#819067] flex justify-start">
+        <div className="px-3 py-2 bg-[#F9F8F4] border border-[#E0DCC7] rounded-lg">
+          <span className="font-semibold text-[#0A400C] mr-1">Low Stock Thresholds:</span>
+          <span>Machinery & Electrical ≤ 5 • Spare Parts & Tools ≤ 15 • Miscellaneous ≤ 10</span>
+        </div>
+      </div>
+
+
       {/* Table */}
-<div className="mt-6 bg-white rounded-2xl shadow p-4 overflow-x-auto border border-[#E0DCC7]">
-  <table className="w-full text-left bg-white">
-    <thead className="border-b bg-[#F9F8F4]">
-        <tr className="text-[#0A400C]">
-        <th className="p-3 text-left">#</th>
-        <th className="p-3 text-left">SKU</th>
-        <th className="p-3 text-left">Item Name</th>
-        <th className="p-3 text-left">Category</th>
-        <th className="p-3 text-left">Warehouse</th>
-        <th className="p-3 text-left">Stock</th>
-        <th className="p-3 text-right">Unit Price (₱)</th>
-        <th className="p-3 text-center">Status</th>
-        <th className="p-3">Note</th>
-        <th className="p-3 text-center">Actions</th>
-      </tr>
-    </thead>
+      <div className="mt-6 bg-white rounded-2xl shadow p-4 overflow-x-auto border border-[#E0DCC7]">
+        <table className="w-full text-left bg-white">
+          <thead className="border-b bg-[#F9F8F4]">
+            <tr className="text-[#0A400C]">
+              <th className="p-3 text-left">#</th>
+              <th className="p-3 text-left">SKU</th>
+              <th className="p-3 text-left">Item Name</th>
+              <th className="p-3 text-left">Category</th>
+              <th className="p-3 text-left">Warehouse</th>
+              <th className="p-3 text-left">Stock</th>
+              <th className="p-3 text-right">Unit Price (₱)</th>
+              <th className="p-3 text-center">Status</th>
+              <th className="p-3">Note</th>
+              <th className="p-3 text-center">Actions</th>
+            </tr>
+          </thead>
 
-    <tbody>
-      {paginatedItems.length > 0 ? (
-        paginatedItems.map((item, index) => (
-          <tr
-            key={item._id || index}
-            className="border-b hover:bg-gray-50 bg-white transition-colors"
-          >
-            <td className="p-2">{(currentPage - 1) * itemsPerPage + index + 1}</td>
-            <td className="p-2 font-semibold">{item.sku}</td>
-            <td className="p-2">{item.name}</td>
-            <td className="p-2">{item.category}</td>
-            <td className="p-2">{formatArrayField(item.warehouseLoc)}</td>
-            <td className="p-2 align-top">
-              <div className="flex flex-wrap gap-2">
-                {typeof item.stock === "object"
-                  ? Object.entries(item.stock).map(([wh, q]) => {
-                      const threshold = getLowStockThreshold(item.category);
-                      const isLow = Number(q) <= threshold;
-                      return (
-                        <span
-                          key={wh}
-                          className={`inline-block px-2 py-1 text-xs rounded-md border ${isLow ? 'bg-red-50 border-red-200 text-red-700' : 'bg-green-50 border-green-200 text-green-700'}`}
-                          title={`${wh}: ${q}`}
-                        >
-                          {wh}: {Number(q)}
-                        </span>
-                      );
-                    })
-                  : (
-                    <span className={`inline-block px-2 py-1 text-xs rounded-md ${totalStock(item.stock) <= getLowStockThreshold(item.category) ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700'}`}>
-                      {Number(item.stock)}
-                    </span>
-                  )}
-              </div>
-            </td>
-            <td className="p-2 text-right">{item.unitPrice?.toFixed(2) ?? "—"}</td>
-            <td className="p-2 text-center">{getStatusBadge(item.stock, item.category)}</td>
+          <tbody>
+            {paginatedItems.length > 0 ? (
+              paginatedItems.map((item, index) => (
+                <tr
+                  key={item._id || index}
+                  className="border-b hover:bg-gray-50 bg-white transition-colors"
+                >
+                  <td className="p-2">{(currentPage - 1) * itemsPerPage + index + 1}</td>
+                  <td className="p-2 font-semibold">{item.sku}</td>
+                  <td className="p-2">{item.name}</td>
+                  <td className="p-2">{item.category}</td>
+                  <td className="p-2">{formatArrayField(item.warehouseLoc)}</td>
+                  <td className="p-2 align-top">
+                    <div className="flex flex-wrap gap-2">
+                      {typeof item.stock === "object"
+                        ? Object.entries(item.stock).map(([wh, q]) => {
+                            const threshold = getLowStockThreshold(item.category);
+                            const isLow = Number(q) <= threshold;
+                            return (
+                              <span
+                                key={wh}
+                                className={`inline-block px-2 py-1 text-xs rounded-md border ${
+                                  isLow
+                                    ? "bg-red-50 border-red-200 text-red-700"
+                                    : "bg-green-50 border-green-200 text-green-700"
+                                }`}
+                                title={`${wh}: ${q}`}
+                              >
+                                {wh}: {Number(q)}
+                              </span>
+                            );
+                          })
+                        : (
+                          <span
+                            className={`inline-block px-2 py-1 text-xs rounded-md ${
+                              totalStock(item.stock) <= getLowStockThreshold(item.category)
+                                ? "bg-red-50 text-red-700"
+                                : "bg-green-50 text-green-700"
+                            }`}
+                          >
+                            {Number(item.stock)}
+                          </span>
+                        )}
+                    </div>
+                  </td>
+                  <td className="p-2 text-right">{item.unitPrice?.toFixed(2) ?? "—"}</td>
+                  <td className="p-2 text-center">{getStatusBadge(item.stock, item.category)}</td>
 
-            {/* Note column */}
-            <td
-              className="p-2 max-w-[160px] truncate whitespace-nowrap overflow-hidden text-ellipsis text-sm"
-              title={item.note || ""}
-            >
-              {item.note || "—"}
-            </td>
+                  {/* Note column */}
+                  <td
+                    className="p-2 max-w-[160px] truncate whitespace-nowrap overflow-hidden text-ellipsis text-sm"
+                    title={item.note || ""}
+                  >
+                    {item.note || "—"}
+                  </td>
 
-            {/* Edit/Delete buttons */}
-            <td className="p-2 text-center space-x-1">
-              <button
-                onClick={() => openEditModal(item)}
-                className="px-2 py-1 bg-[#E0DCC7] text-[#0A400C] rounded-md text-sm hover:bg-[#D6D1B1] transition"
-              >
-                ✏️
-              </button>
-              <button
-                onClick={() => deleteItem(item._id)}
-                className="px-2 py-1 bg-red-600 text-white rounded-md text-sm hover:bg-red-700 transition"
-              >
-                🗑️
-              </button>
-            </td>
-          </tr>
-        ))
-      ) : (
-        <tr>
-          <td colSpan={10} className="p-4 text-center text-[#819067] italic bg-white">
-            No items found matching your search or filter criteria.
-          </td>
-        </tr>
-      )}
-    </tbody>
-  </table>
-</div>
-
-
-
+                  {/* Edit/Delete buttons */}
+                  <td className="p-2 text-center space-x-1">
+                    <button
+                      onClick={() => openEditModal(item)}
+                      className="px-2 py-1 bg-[#E0DCC7] text-[#0A400C] rounded-md text-sm hover:bg-[#D6D1B1] transition"
+                    >
+                      ✏️
+                    </button>
+                    <button
+                      onClick={() => deleteItem(item._id)}
+                      className="px-2 py-1 bg-red-600 text-white rounded-md text-sm hover:bg-red-700 transition"
+                    >
+                      🗑️
+                    </button>
+                  </td>
+                </tr>
+              ))
+            ) : (
+              <tr>
+                <td colSpan={10} className="p-4 text-center text-[#819067] italic bg-white">
+                  No items found matching your search or filter criteria.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
 
       {/* Pagination */}
       <div className="flex justify-center items-center gap-3 mt-4">
@@ -499,9 +515,13 @@ export default function InventoryModule() {
                               } else {
                                 updatedCodes = updatedCodes.filter((c) => c !== code);
                               }
-                              const updatedLocs = Array.from(new Set(updatedCodes.map((c) =>
-                                c.startsWith("VL") ? "Valenzuela" : "Malabon"
-                              )));
+                              const updatedLocs = Array.from(
+                                new Set(
+                                  updatedCodes.map((c) =>
+                                    c.startsWith("VL") ? "Valenzuela" : "Malabon"
+                                  )
+                                )
+                              );
                               setNewItem({
                                 ...newItem,
                                 warehouseCode: updatedCodes,
@@ -562,19 +582,18 @@ export default function InventoryModule() {
               </div>
 
               <div className="col-span-2">
-  <label className="block text-sm font-medium text-[#0A400C]">Unit Price (₱)</label>
-  <input
-    type="number"
-    name="unitPrice"
-    value={newItem.unitPrice}
-    onChange={handleChange}
-    className="w-full p-2 border rounded-lg mt-1"
-    min="0"
-    step="0.01"
-    placeholder="e.g., 1500.00"
-  />
-</div>
-
+                <label className="block text-sm font-medium text-[#0A400C]">Unit Price (₱)</label>
+                <input
+                  type="number"
+                  name="unitPrice"
+                  value={newItem.unitPrice}
+                  onChange={handleChange}
+                  className="w-full p-2 border rounded-lg mt-1"
+                  min="0"
+                  step="0.01"
+                  placeholder="e.g., 1500.00"
+                />
+              </div>
 
               {/* Note field */}
               <div className="col-span-2">
