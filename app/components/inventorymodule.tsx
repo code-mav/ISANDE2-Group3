@@ -1,6 +1,7 @@
 // components/inventorymodule.tsx
 
 import { useEffect, useState } from "react";
+import { useRole } from "~/contexts/RoleContext";
 
 interface Item {
   _id?: string;
@@ -32,6 +33,8 @@ export default function InventoryModule() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
+
+  const { role } = useRole();
 
   const [newItem, setNewItem] = useState<Item>({
     sku: "",
@@ -158,9 +161,14 @@ export default function InventoryModule() {
   // Delete item
   const deleteItem = async (id: string | undefined) => {
     if (!id) return;
+    if (role !== "admin" && role !== "manager") {
+      alert("You do not have permission to delete items.");
+      return;
+    }
+
     const confirmDelete = confirm("Are you sure you want to delete this item?");
     if (confirmDelete) {
-      await fetch(`/api/items?id=${id}`, { method: "DELETE" });
+      await fetch(`/api/items?id=${id}`, { method: "DELETE", headers: { "x-user-role": role || "" } });
       await fetchItems();
     }
   };
@@ -399,12 +407,14 @@ export default function InventoryModule() {
                     >
                       ✏️
                     </button>
-                    <button
-                      onClick={() => deleteItem(item._id)}
-                      className="px-2 py-1 bg-red-600 text-white rounded-md text-sm hover:bg-red-700 transition"
-                    >
-                      🗑️
-                    </button>
+                    {(role === "admin" || role === "manager") && (
+                      <button
+                        onClick={() => deleteItem(item._id)}
+                        className="px-2 py-1 bg-red-600 text-white rounded-md text-sm hover:bg-red-700 transition"
+                      >
+                        🗑️
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))
