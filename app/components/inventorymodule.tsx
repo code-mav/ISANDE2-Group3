@@ -1,6 +1,7 @@
 // components/inventorymodule.tsx
 
 import { useEffect, useState } from "react";
+import { useRole } from "~/contexts/RoleContext";
 
 interface Item {
   _id?: string;
@@ -158,9 +159,15 @@ export default function InventoryModule() {
   // Delete item
   const deleteItem = async (id: string | undefined) => {
     if (!id) return;
+    const { role } = useRole();
+    if (role !== "admin" && role !== "manager") {
+      alert("You do not have permission to delete items.");
+      return;
+    }
+
     const confirmDelete = confirm("Are you sure you want to delete this item?");
     if (confirmDelete) {
-      await fetch(`/api/items?id=${id}`, { method: "DELETE" });
+      await fetch(`/api/items?id=${id}`, { method: "DELETE", headers: { "x-user-role": role || "" } });
       await fetchItems();
     }
   };

@@ -453,6 +453,15 @@ export async function action({ request }: { request: Request }) {
       );
     }
 
+    // Authorization: only admin or manager may delete inventory items
+    const roleHeader = request.headers.get("x-user-role") || null;
+    if (roleHeader !== "admin" && roleHeader !== "manager") {
+      return new Response(
+        JSON.stringify({ success: false, message: "Forbidden: insufficient permissions" }),
+        { status: 403, headers: { "Content-Type": "application/json" } }
+      );
+    }
+
     const _id = new ObjectId(String(id));
     const oldItem = await collection.findOne({ _id });
     if (!oldItem) {
